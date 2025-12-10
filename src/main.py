@@ -4,6 +4,7 @@ import sys
 import tty
 import termios
 import select
+import random
 
 # 게임 설정
 BOARD_WIDTH = 10
@@ -12,17 +13,27 @@ BOARD_HEIGHT = 20
 # 게임 보드 (0: 빈칸, 1: 블록)
 board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
 
-# T-piece 블록 모양 (상대 좌표)
-block_shape = [
-    (0, 0), (1, 0), (2, 0),  # 가로줄
-    (1, 1)                     # 아래 중앙
-]
+# 테트리미노 블록 정의 (7가지)
+TETROMINOS = {
+    'I': [(0, 0), (1, 0), (2, 0), (3, 0)],  # I-piece (일직선)
+    'O': [(0, 0), (1, 0), (0, 1), (1, 1)],  # O-piece (정사각형)
+    'T': [(0, 0), (1, 0), (2, 0), (1, 1)],  # T-piece
+    'S': [(1, 0), (2, 0), (0, 1), (1, 1)],  # S-piece
+    'Z': [(0, 0), (1, 0), (1, 1), (2, 1)],  # Z-piece
+    'J': [(0, 0), (0, 1), (0, 2), (1, 2)],  # J-piece
+    'L': [(1, 0), (1, 1), (1, 2), (0, 2)]   # L-piece
+}
+
+def get_random_block():
+    """랜덤 블록 반환"""
+    block_type = random.choice(list(TETROMINOS.keys()))
+    return list(TETROMINOS[block_type])
+
+# 현재 블록
+block_shape = get_random_block()
 
 # 다음 블록 (미리보기용)
-next_block_shape = [
-    (0, 0), (1, 0), (2, 0),
-    (1, 1)
-]
+next_block_shape = get_random_block()
 
 # 블록 위치
 block_x = 3
@@ -193,11 +204,8 @@ def spawn_new_block():
     block_x = 3
     block_y = 0
 
-    # 새로운 다음 블록 생성 (현재는 T-piece만)
-    next_block_shape = [
-        (0, 0), (1, 0), (2, 0),
-        (1, 1)
-    ]
+    # 새로운 다음 블록을 랜덤 생성
+    next_block_shape = get_random_block()
 
     # 생성 위치에 블록이 있으면 게임오버
     if not can_move(0, 0):
