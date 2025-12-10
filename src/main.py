@@ -78,7 +78,7 @@ def render():
     screen_buffer.append("<|====================|>")
     screen_buffer.append(" \\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/ ")
     screen_buffer.append("")
-    screen_buffer.append("Controls: ←/a=left, →/d=right, ↓/s=down, q=quit")
+    screen_buffer.append("Controls: ←/a=left, →/d=right, ↓/s=down, ↑/w=rotate, q=quit")
 
     # 화면 클리어 후 출력
     os.system('clear' if os.name == 'posix' else 'cls')
@@ -145,6 +145,38 @@ def move_down():
         return True
     return False
 
+def rotate_block():
+    """블록을 시계방향으로 90도 회전"""
+    global block_shape
+
+    # 회전 중심점 계산 (블록의 중심)
+    if not block_shape:
+        return False
+
+    cx = sum(x for x, y in block_shape) / len(block_shape)
+    cy = sum(y for x, y in block_shape) / len(block_shape)
+
+    # 90도 시계방향 회전: (x, y) -> (y, -x) (중심 기준)
+    rotated = []
+    for x, y in block_shape:
+        # 중심으로 이동
+        tx, ty = x - cx, y - cy
+        # 회전
+        rx, ry = -ty, tx
+        # 다시 원래 위치로
+        rotated.append((int(round(rx + cx)), int(round(ry + cy))))
+
+    # 회전 후 충돌 체크
+    original_shape = block_shape
+    block_shape = rotated
+
+    if not can_move(0, 0):
+        # 충돌하면 원래대로
+        block_shape = original_shape
+        return False
+
+    return True
+
 # 터미널 체크
 if not sys.stdin.isatty():
     print("Error: This game must be run in a terminal.")
@@ -171,6 +203,8 @@ try:
             move_right()
         elif key == 's' or key == 'DOWN':
             move_down()
+        elif key == 'w' or key == 'UP':
+            rotate_block()
         elif key == 'q':
             running = False
 
