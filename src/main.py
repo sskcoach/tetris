@@ -18,6 +18,12 @@ block_shape = [
     (1, 1)                     # 아래 중앙
 ]
 
+# 다음 블록 (미리보기용)
+next_block_shape = [
+    (0, 0), (1, 0), (2, 0),
+    (1, 1)
+]
+
 # 블록 위치
 block_x = 3
 block_y = 0
@@ -33,7 +39,15 @@ def render():
         if 0 <= by < BOARD_HEIGHT and 0 <= bx < BOARD_WIDTH:
             temp_board[by][bx] = 1
 
-    # 보드를 문자열로 변환
+    # 다음 블록 미리보기 보드 생성 (4x4)
+    next_preview = [[0 for _ in range(4)] for _ in range(4)]
+    for dx, dy in next_block_shape:
+        if dx < 4 and dy < 4:
+            next_preview[dy][dx] = 1
+
+    # 보드를 문자열로 변환 (미리보기 포함)
+    screen_buffer.append("              NEXT")
+
     for y in range(BOARD_HEIGHT):
         line = "<|"
         for x in range(BOARD_WIDTH):
@@ -42,6 +56,22 @@ def render():
             else:
                 line += " ."
         line += "|>"
+
+        # 다음 블록 미리보기 추가 (상단 4줄)
+        if y == 1:
+            line += "  ┌────────┐"
+        elif y >= 2 and y <= 5:
+            line += "  │"
+            preview_y = y - 2
+            for px in range(4):
+                if next_preview[preview_y][px] == 1:
+                    line += "[]"
+                else:
+                    line += "  "
+            line += "│"
+        elif y == 6:
+            line += "  └────────┘"
+
         screen_buffer.append(line)
 
     # 하단 테두리
