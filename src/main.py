@@ -13,6 +13,10 @@ BOARD_HEIGHT = 20
 # 게임 보드 (0: 빈칸, 1: 블록)
 board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
 
+# 스테이지 정보
+current_stage = 1
+lines_to_clear = 1  # 스테이지 클리어에 필요한 줄 수
+
 # 테트리미노 블록 정의 (각 블록의 4가지 회전 상태)
 TETROMINOS = {
     'I': [
@@ -94,7 +98,7 @@ def render():
             next_preview[dy][dx] = 1
 
     # 보드를 문자열로 변환 (미리보기 포함)
-    screen_buffer.append("              NEXT")
+    screen_buffer.append(f"   STAGE {current_stage}   NEXT")
 
     for y in range(BOARD_HEIGHT):
         line = "<|"
@@ -234,7 +238,9 @@ def lock_block():
             board[by][bx] = 1
 
 def clear_lines():
-    """완성된 줄을 제거하고 점수 반환"""
+    """완성된 줄을 제거하고 스테이지 클리어 여부 반환"""
+    global current_stage, lines_to_clear
+
     lines_cleared = 0
     y = BOARD_HEIGHT - 1
 
@@ -250,7 +256,22 @@ def clear_lines():
         else:
             y -= 1
 
-    return lines_cleared
+    # 스테이지 클리어 체크
+    if lines_cleared >= lines_to_clear:
+        return True  # 스테이지 클리어
+
+    return False
+
+def next_stage():
+    """다음 스테이지로 진행"""
+    global current_stage, board
+
+    current_stage += 1
+
+    # 보드 초기화
+    board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
+
+    return True
 
 def spawn_new_block():
     """새로운 블록 생성"""
@@ -306,7 +327,9 @@ try:
             # 하드 드롭 (스페이스)
             hard_drop()
             lock_block()
-            clear_lines()
+            stage_cleared = clear_lines()
+            if stage_cleared:
+                next_stage()
             if not spawn_new_block():
                 running = False
         elif key == 'q':
@@ -318,7 +341,9 @@ try:
             if not move_down():
                 # 블록이 바닥에 닿으면 고정하고 새 블록 생성
                 lock_block()
-                clear_lines()  # 완성된 줄 제거
+                stage_cleared = clear_lines()  # 완성된 줄 제거
+                if stage_cleared:
+                    next_stage()
                 if not spawn_new_block():
                     # 새 블록을 생성할 수 없으면 게임오버
                     running = False
