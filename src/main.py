@@ -13,27 +13,64 @@ BOARD_HEIGHT = 20
 # 게임 보드 (0: 빈칸, 1: 블록)
 board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
 
-# 테트리미노 블록 정의 (7가지)
+# 테트리미노 블록 정의 (각 블록의 4가지 회전 상태)
 TETROMINOS = {
-    'I': [(0, 0), (1, 0), (2, 0), (3, 0)],  # I-piece (일직선)
-    'O': [(0, 0), (1, 0), (0, 1), (1, 1)],  # O-piece (정사각형)
-    'T': [(0, 0), (1, 0), (2, 0), (1, 1)],  # T-piece
-    'S': [(1, 0), (2, 0), (0, 1), (1, 1)],  # S-piece
-    'Z': [(0, 0), (1, 0), (1, 1), (2, 1)],  # Z-piece
-    'J': [(0, 0), (0, 1), (0, 2), (1, 2)],  # J-piece
-    'L': [(1, 0), (1, 1), (1, 2), (0, 2)]   # L-piece
+    'I': [
+        [(0, 1), (1, 1), (2, 1), (3, 1)],  # 가로
+        [(2, 0), (2, 1), (2, 2), (2, 3)],  # 세로
+        [(0, 2), (1, 2), (2, 2), (3, 2)],  # 가로
+        [(1, 0), (1, 1), (1, 2), (1, 3)]   # 세로
+    ],
+    'O': [
+        [(1, 0), (2, 0), (1, 1), (2, 1)],  # 정사각형 (회전 없음)
+        [(1, 0), (2, 0), (1, 1), (2, 1)],
+        [(1, 0), (2, 0), (1, 1), (2, 1)],
+        [(1, 0), (2, 0), (1, 1), (2, 1)]
+    ],
+    'T': [
+        [(1, 0), (0, 1), (1, 1), (2, 1)],  # ㅗ
+        [(1, 0), (1, 1), (2, 1), (1, 2)],  # ㅏ
+        [(0, 1), (1, 1), (2, 1), (1, 2)],  # ㅜ
+        [(1, 0), (0, 1), (1, 1), (1, 2)]   # ㅓ
+    ],
+    'S': [
+        [(1, 0), (2, 0), (0, 1), (1, 1)],  # ㄱㄱ
+        [(1, 0), (1, 1), (2, 1), (2, 2)],  # ㅁㅁ
+        [(1, 1), (2, 1), (0, 2), (1, 2)],  # ㄱㄱ
+        [(0, 0), (0, 1), (1, 1), (1, 2)]   # ㅁㅁ
+    ],
+    'Z': [
+        [(0, 0), (1, 0), (1, 1), (2, 1)],  # ㄴㄴ
+        [(2, 0), (1, 1), (2, 1), (1, 2)],  # ㅁㅁ
+        [(0, 1), (1, 1), (1, 2), (2, 2)],  # ㄴㄴ
+        [(1, 0), (0, 1), (1, 1), (0, 2)]   # ㅁㅁ
+    ],
+    'J': [
+        [(1, 0), (1, 1), (0, 2), (1, 2)],  # ㄱ
+        [(0, 0), (0, 1), (1, 1), (2, 1)],  # ㄴ
+        [(1, 0), (2, 0), (1, 1), (1, 2)],  # ㄱ
+        [(0, 1), (1, 1), (2, 1), (2, 2)]   # ㄴ
+    ],
+    'L': [
+        [(1, 0), (1, 1), (1, 2), (2, 2)],  # L
+        [(0, 1), (1, 1), (2, 1), (0, 2)],  # ㄴ
+        [(0, 0), (1, 0), (1, 1), (1, 2)],  # L
+        [(2, 0), (0, 1), (1, 1), (2, 1)]   # ㄴ
+    ]
 }
 
 def get_random_block():
-    """랜덤 블록 반환"""
+    """랜덤 블록 타입과 회전 상태 반환"""
     block_type = random.choice(list(TETROMINOS.keys()))
-    return list(TETROMINOS[block_type])
+    return block_type, 0  # (타입, 회전 상태)
 
 # 현재 블록
-block_shape = get_random_block()
+current_block_type, current_rotation = get_random_block()
+block_shape = list(TETROMINOS[current_block_type][current_rotation])
 
 # 다음 블록 (미리보기용)
-next_block_shape = get_random_block()
+next_block_type, next_rotation = get_random_block()
+next_block_shape = list(TETROMINOS[next_block_type][next_rotation])
 
 # 블록 위치
 block_x = 3
@@ -158,32 +195,23 @@ def move_down():
 
 def rotate_block():
     """블록을 시계방향으로 90도 회전"""
-    global block_shape
+    global block_shape, current_rotation
 
-    # 회전 중심점 계산 (블록의 중심)
-    if not block_shape:
-        return False
-
-    cx = sum(x for x, y in block_shape) / len(block_shape)
-    cy = sum(y for x, y in block_shape) / len(block_shape)
-
-    # 90도 시계방향 회전: (x, y) -> (y, -x) (중심 기준)
-    rotated = []
-    for x, y in block_shape:
-        # 중심으로 이동
-        tx, ty = x - cx, y - cy
-        # 회전
-        rx, ry = -ty, tx
-        # 다시 원래 위치로
-        rotated.append((int(round(rx + cx)), int(round(ry + cy))))
+    # 다음 회전 상태 계산
+    new_rotation = (current_rotation + 1) % 4
+    rotated = list(TETROMINOS[current_block_type][new_rotation])
 
     # 회전 후 충돌 체크
     original_shape = block_shape
+    original_rotation = current_rotation
+
     block_shape = rotated
+    current_rotation = new_rotation
 
     if not can_move(0, 0):
         # 충돌하면 원래대로
         block_shape = original_shape
+        current_rotation = original_rotation
         return False
 
     return True
@@ -197,15 +225,19 @@ def lock_block():
 
 def spawn_new_block():
     """새로운 블록 생성"""
-    global block_x, block_y, block_shape, next_block_shape
+    global block_x, block_y, block_shape, current_block_type, current_rotation
+    global next_block_type, next_rotation, next_block_shape
 
     # 다음 블록을 현재 블록으로
-    block_shape = next_block_shape
+    current_block_type = next_block_type
+    current_rotation = next_rotation
+    block_shape = list(TETROMINOS[current_block_type][current_rotation])
     block_x = 3
     block_y = 0
 
     # 새로운 다음 블록을 랜덤 생성
-    next_block_shape = get_random_block()
+    next_block_type, next_rotation = get_random_block()
+    next_block_shape = list(TETROMINOS[next_block_type][next_rotation])
 
     # 생성 위치에 블록이 있으면 게임오버
     if not can_move(0, 0):
