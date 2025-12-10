@@ -48,7 +48,7 @@ def render():
     screen_buffer.append("<|====================|>")
     screen_buffer.append(" \\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/ ")
     screen_buffer.append("")
-    screen_buffer.append("Controls: a=left, d=right, s=down, q=quit")
+    screen_buffer.append("Controls: ←/a=left, →/d=right, ↓/s=down, q=quit")
 
     # 화면 클리어 후 출력
     os.system('clear' if os.name == 'posix' else 'cls')
@@ -61,20 +61,18 @@ def get_key():
 
         # ESC 시퀀스 처리 (방향키)
         if ch == '\x1b':
-            # 추가 문자가 있는지 확인
-            if select.select([sys.stdin], [], [], 0.1)[0]:
-                ch2 = sys.stdin.read(1)
-                if ch2 == '[':
-                    if select.select([sys.stdin], [], [], 0.1)[0]:
-                        ch3 = sys.stdin.read(1)
-                        if ch3 == 'A':
-                            return 'UP'
-                        elif ch3 == 'B':
-                            return 'DOWN'
-                        elif ch3 == 'C':
-                            return 'RIGHT'
-                        elif ch3 == 'D':
-                            return 'LEFT'
+            # 나머지 시퀀스를 즉시 읽기
+            ch2 = sys.stdin.read(1)
+            if ch2 == '[':
+                ch3 = sys.stdin.read(1)
+                if ch3 == 'A':
+                    return 'UP'
+                elif ch3 == 'B':
+                    return 'DOWN'
+                elif ch3 == 'C':
+                    return 'RIGHT'
+                elif ch3 == 'D':
+                    return 'LEFT'
 
         return ch
     return None
