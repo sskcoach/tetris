@@ -129,9 +129,8 @@ def render():
     screen_buffer.append("Controls: ←/a=left, →/d=right, ↓/s=down, ↑/w=rotate")
     screen_buffer.append("          SPACE=drop, q=quit")
 
-    # 화면 클리어 후 출력
-    os.system('clear' if os.name == 'posix' else 'cls')
-    print('\n'.join(screen_buffer))
+    # 화면 클리어 후 출력 (ANSI escape code 사용으로 깜빡임 방지)
+    print('\033[H\033[J' + '\n'.join(screen_buffer), end='', flush=True)
 
 def get_key():
     """논블로킹 키 입력 (방향키 지원)"""
