@@ -126,7 +126,8 @@ def render():
     screen_buffer.append("<|====================|>")
     screen_buffer.append(" \\/\\/\\/\\/\\/\\/\\/\\/\\/\\/\\/ ")
     screen_buffer.append("")
-    screen_buffer.append("Controls: ←/a=left, →/d=right, ↓/s=down, ↑/w=rotate, q=quit")
+    screen_buffer.append("Controls: ←/a=left, →/d=right, ↓/s=down, ↑/w=rotate")
+    screen_buffer.append("          SPACE=drop, q=quit")
 
     # 화면 클리어 후 출력
     os.system('clear' if os.name == 'posix' else 'cls')
@@ -192,6 +193,12 @@ def move_down():
         block_y += 1
         return True
     return False
+
+def hard_drop():
+    """블록을 바닥까지 즉시 떨어뜨림"""
+    while move_down():
+        pass
+    return True
 
 def rotate_block():
     """블록을 시계방향으로 90도 회전"""
@@ -292,6 +299,13 @@ try:
             move_down()
         elif key == 'w' or key == 'UP':
             rotate_block()
+        elif key == ' ':
+            # 하드 드롭 (스페이스)
+            hard_drop()
+            lock_block()
+            clear_lines()
+            if not spawn_new_block():
+                running = False
         elif key == 'q':
             running = False
 
