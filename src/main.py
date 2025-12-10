@@ -223,6 +223,25 @@ def lock_block():
         if 0 <= by < BOARD_HEIGHT and 0 <= bx < BOARD_WIDTH:
             board[by][bx] = 1
 
+def clear_lines():
+    """완성된 줄을 제거하고 점수 반환"""
+    lines_cleared = 0
+    y = BOARD_HEIGHT - 1
+
+    while y >= 0:
+        # 현재 줄이 완전히 채워졌는지 확인
+        if all(board[y][x] == 1 for x in range(BOARD_WIDTH)):
+            # 줄 제거
+            del board[y]
+            # 맨 위에 빈 줄 추가
+            board.insert(0, [0 for _ in range(BOARD_WIDTH)])
+            lines_cleared += 1
+            # 같은 y를 다시 체크 (위에서 내려온 줄)
+        else:
+            y -= 1
+
+    return lines_cleared
+
 def spawn_new_block():
     """새로운 블록 생성"""
     global block_x, block_y, block_shape, current_block_type, current_rotation
@@ -282,6 +301,7 @@ try:
             if not move_down():
                 # 블록이 바닥에 닿으면 고정하고 새 블록 생성
                 lock_block()
+                clear_lines()  # 완성된 줄 제거
                 if not spawn_new_block():
                     # 새 블록을 생성할 수 없으면 게임오버
                     running = False
