@@ -10,6 +10,15 @@ import random
 BOARD_WIDTH = 10
 BOARD_HEIGHT = 20
 
+# 게임 씬
+SCENE_SPLASH = 0
+SCENE_TITLE = 1
+SCENE_GAME = 2
+SCENE_GAME_OVER = 3
+
+current_scene = SCENE_SPLASH
+splash_start_time = None
+
 # 게임 보드 (0: 빈칸, 1: 블록)
 board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
 
@@ -80,7 +89,45 @@ next_block_shape = list(TETROMINOS[next_block_type][next_rotation])
 block_x = 3
 block_y = 0
 
-def render():
+def render_splash():
+    """스플래시 화면 렌더링"""
+    screen_buffer = []
+    screen_buffer.append("")
+    screen_buffer.append("")
+    screen_buffer.append("")
+    screen_buffer.append("    ████████╗███████╗████████╗██████╗ ██╗███████╗")
+    screen_buffer.append("    ╚══██╔══╝██╔════╝╚══██╔══╝██╔══██╗██║██╔════╝")
+    screen_buffer.append("       ██║   █████╗     ██║   ██████╔╝██║███████╗")
+    screen_buffer.append("       ██║   ██╔══╝     ██║   ██╔══██╗██║╚════██║")
+    screen_buffer.append("       ██║   ███████╗   ██║   ██║  ██║██║███████║")
+    screen_buffer.append("       ╚═╝   ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝╚══════╝")
+    screen_buffer.append("")
+    screen_buffer.append("")
+    screen_buffer.append("                   Loading...")
+    screen_buffer.append("")
+
+    print('\033[H\033[J' + '\n'.join(screen_buffer), end='', flush=True)
+
+def render_title():
+    """타이틀 화면 렌더링"""
+    screen_buffer = []
+    screen_buffer.append("")
+    screen_buffer.append("")
+    screen_buffer.append("    ████████╗███████╗████████╗██████╗ ██╗███████╗")
+    screen_buffer.append("    ╚══██╔══╝██╔════╝╚══██╔══╝██╔══██╗██║██╔════╝")
+    screen_buffer.append("       ██║   █████╗     ██║   ██████╔╝██║███████╗")
+    screen_buffer.append("       ██║   ██╔══╝     ██║   ██╔══██╗██║╚════██║")
+    screen_buffer.append("       ██║   ███████╗   ██║   ██║  ██║██║███████║")
+    screen_buffer.append("       ╚═╝   ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝╚══════╝")
+    screen_buffer.append("")
+    screen_buffer.append("")
+    screen_buffer.append("                Press SPACE to start")
+    screen_buffer.append("                Press Q to quit")
+    screen_buffer.append("")
+
+    print('\033[H\033[J' + '\n'.join(screen_buffer), end='', flush=True)
+
+def render_game():
     """게임 화면을 렌더링"""
     screen_buffer = []
 
@@ -135,6 +182,45 @@ def render():
 
     # 화면 클리어 후 출력 (ANSI escape code 사용으로 깜빡임 방지)
     print('\033[H\033[J' + '\n'.join(screen_buffer), end='', flush=True)
+
+def render_game_over():
+    """게임 오버 화면 렌더링"""
+    screen_buffer = []
+    screen_buffer.append("")
+    screen_buffer.append("")
+    screen_buffer.append("")
+    screen_buffer.append("     ██████╗  █████╗ ███╗   ███╗███████╗")
+    screen_buffer.append("    ██╔════╝ ██╔══██╗████╗ ████║██╔════╝")
+    screen_buffer.append("    ██║  ███╗███████║██╔████╔██║█████╗")
+    screen_buffer.append("    ██║   ██║██╔══██║██║╚██╔╝██║██╔══╝")
+    screen_buffer.append("    ╚██████╔╝██║  ██║██║ ╚═╝ ██║███████╗")
+    screen_buffer.append("     ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝")
+    screen_buffer.append("")
+    screen_buffer.append("      ██████╗ ██╗   ██╗███████╗██████╗")
+    screen_buffer.append("     ██╔═══██╗██║   ██║██╔════╝██╔══██╗")
+    screen_buffer.append("     ██║   ██║██║   ██║█████╗  ██████╔╝")
+    screen_buffer.append("     ██║   ██║╚██╗ ██╔╝██╔══╝  ██╔══██╗")
+    screen_buffer.append("     ╚██████╔╝ ╚████╔╝ ███████╗██║  ██║")
+    screen_buffer.append("      ╚═════╝   ╚═══╝  ╚══════╝╚═╝  ╚═╝")
+    screen_buffer.append("")
+    screen_buffer.append(f"             STAGE {current_stage} REACHED")
+    screen_buffer.append("")
+    screen_buffer.append("          Press SPACE to restart")
+    screen_buffer.append("          Press Q to quit")
+    screen_buffer.append("")
+
+    print('\033[H\033[J' + '\n'.join(screen_buffer), end='', flush=True)
+
+def render():
+    """현재 씬에 따라 화면 렌더링"""
+    if current_scene == SCENE_SPLASH:
+        render_splash()
+    elif current_scene == SCENE_TITLE:
+        render_title()
+    elif current_scene == SCENE_GAME:
+        render_game()
+    elif current_scene == SCENE_GAME_OVER:
+        render_game_over()
 
 def get_key():
     """논블로킹 키 입력 (방향키 지원, 버퍼 클리어)"""
@@ -295,6 +381,23 @@ def spawn_new_block():
 
     return True
 
+def reset_game():
+    """게임 초기화"""
+    global board, current_stage, block_x, block_y, block_shape, current_block_type, current_rotation
+    global next_block_type, next_rotation, next_block_shape
+
+    # 보드 초기화
+    board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
+    current_stage = 1
+
+    # 블록 초기화
+    current_block_type, current_rotation = get_random_block()
+    block_shape = list(TETROMINOS[current_block_type][current_rotation])
+    next_block_type, next_rotation = get_random_block()
+    next_block_shape = list(TETROMINOS[next_block_type][next_rotation])
+    block_x = 3
+    block_y = 0
+
 # 터미널 체크
 if not sys.stdin.isatty():
     print("Error: This game must be run in a terminal.")
@@ -309,49 +412,80 @@ try:
     # 게임 루프
     last_drop = time.time()
     running = True
+    splash_start_time = time.time()
 
     while running:
         render()
-
-        # 키 입력 처리
-        key = get_key()
-        if key == 'a' or key == 'LEFT':
-            move_left()
-        elif key == 'd' or key == 'RIGHT':
-            move_right()
-        elif key == 's' or key == 'DOWN':
-            move_down()
-        elif key == 'w' or key == 'UP':
-            rotate_block()
-        elif key == ' ':
-            # 하드 드롭 (스페이스)
-            hard_drop()
-            lock_block()
-            stage_cleared = clear_lines()
-            if stage_cleared:
-                next_stage()
-            if not spawn_new_block():
-                running = False
-        elif key == 'q':
-            running = False
-
-        # 자동 낙하 (0.5초마다)
         current_time = time.time()
-        if current_time - last_drop > 0.5:
-            if not move_down():
-                # 블록이 바닥에 닿으면 고정하고 새 블록 생성
+
+        # 씬별 처리
+        if current_scene == SCENE_SPLASH:
+            # 스플래시는 2초 후 자동으로 타이틀로 전환
+            if current_time - splash_start_time > 2.0:
+                current_scene = SCENE_TITLE
+            time.sleep(0.05)
+
+        elif current_scene == SCENE_TITLE:
+            # 타이틀 화면 키 입력
+            key = get_key()
+            if key == ' ':
+                reset_game()
+                current_scene = SCENE_GAME
+                last_drop = current_time
+            elif key == 'q':
+                running = False
+            time.sleep(0.05)
+
+        elif current_scene == SCENE_GAME:
+            # 게임 플레이 키 입력 처리
+            key = get_key()
+            if key == 'a' or key == 'LEFT':
+                move_left()
+            elif key == 'd' or key == 'RIGHT':
+                move_right()
+            elif key == 's' or key == 'DOWN':
+                move_down()
+            elif key == 'w' or key == 'UP':
+                rotate_block()
+            elif key == ' ':
+                # 하드 드롭 (스페이스)
+                hard_drop()
                 lock_block()
-                stage_cleared = clear_lines()  # 완성된 줄 제거
+                stage_cleared = clear_lines()
                 if stage_cleared:
                     next_stage()
                 if not spawn_new_block():
-                    # 새 블록을 생성할 수 없으면 게임오버
-                    running = False
-            last_drop = current_time
+                    current_scene = SCENE_GAME_OVER
+            elif key == 'q':
+                running = False
 
-        time.sleep(0.05)
+            # 자동 낙하 (0.5초마다)
+            if current_time - last_drop > 0.5:
+                if not move_down():
+                    # 블록이 바닥에 닿으면 고정하고 새 블록 생성
+                    lock_block()
+                    stage_cleared = clear_lines()  # 완성된 줄 제거
+                    if stage_cleared:
+                        next_stage()
+                    if not spawn_new_block():
+                        # 새 블록을 생성할 수 없으면 게임오버
+                        current_scene = SCENE_GAME_OVER
+                last_drop = current_time
+
+            time.sleep(0.05)
+
+        elif current_scene == SCENE_GAME_OVER:
+            # 게임 오버 화면 키 입력
+            key = get_key()
+            if key == ' ':
+                reset_game()
+                current_scene = SCENE_GAME
+                last_drop = current_time
+            elif key == 'q':
+                running = False
+            time.sleep(0.05)
 
 finally:
     # 터미널 설정 복원
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-    print("\nGame Over!")
+    print("\n\nThanks for playing!")
