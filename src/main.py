@@ -133,8 +133,11 @@ def render():
     print('\033[H\033[J' + '\n'.join(screen_buffer), end='', flush=True)
 
 def get_key():
-    """논블로킹 키 입력 (방향키 지원)"""
-    if select.select([sys.stdin], [], [], 0)[0]:
+    """논블로킹 키 입력 (방향키 지원, 버퍼 클리어)"""
+    last_key = None
+
+    # 버퍼에 쌓인 모든 입력을 읽어서 마지막 것만 사용
+    while select.select([sys.stdin], [], [], 0)[0]:
         ch = sys.stdin.read(1)
 
         # ESC 시퀀스 처리 (방향키)
@@ -144,16 +147,17 @@ def get_key():
             if ch2 == '[':
                 ch3 = sys.stdin.read(1)
                 if ch3 == 'A':
-                    return 'UP'
+                    last_key = 'UP'
                 elif ch3 == 'B':
-                    return 'DOWN'
+                    last_key = 'DOWN'
                 elif ch3 == 'C':
-                    return 'RIGHT'
+                    last_key = 'RIGHT'
                 elif ch3 == 'D':
-                    return 'LEFT'
+                    last_key = 'LEFT'
+        else:
+            last_key = ch
 
-        return ch
-    return None
+    return last_key
 
 def can_move(dx, dy):
     """블록이 이동 가능한지 체크"""
