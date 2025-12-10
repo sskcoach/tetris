@@ -177,6 +177,34 @@ def rotate_block():
 
     return True
 
+def lock_block():
+    """현재 블록을 보드에 고정"""
+    for dx, dy in block_shape:
+        bx, by = block_x + dx, block_y + dy
+        if 0 <= by < BOARD_HEIGHT and 0 <= bx < BOARD_WIDTH:
+            board[by][bx] = 1
+
+def spawn_new_block():
+    """새로운 블록 생성"""
+    global block_x, block_y, block_shape, next_block_shape
+
+    # 다음 블록을 현재 블록으로
+    block_shape = next_block_shape
+    block_x = 3
+    block_y = 0
+
+    # 새로운 다음 블록 생성 (현재는 T-piece만)
+    next_block_shape = [
+        (0, 0), (1, 0), (2, 0),
+        (1, 1)
+    ]
+
+    # 생성 위치에 블록이 있으면 게임오버
+    if not can_move(0, 0):
+        return False
+
+    return True
+
 # 터미널 체크
 if not sys.stdin.isatty():
     print("Error: This game must be run in a terminal.")
@@ -212,8 +240,11 @@ try:
         current_time = time.time()
         if current_time - last_drop > 0.5:
             if not move_down():
-                # 블록이 바닥에 닿으면 종료 (임시)
-                running = False
+                # 블록이 바닥에 닿으면 고정하고 새 블록 생성
+                lock_block()
+                if not spawn_new_block():
+                    # 새 블록을 생성할 수 없으면 게임오버
+                    running = False
             last_drop = current_time
 
         time.sleep(0.05)
