@@ -14,10 +14,12 @@ BOARD_HEIGHT = 20
 SCENE_SPLASH = 0
 SCENE_TITLE = 1
 SCENE_GAME = 2
-SCENE_GAME_OVER = 3
+SCENE_STAGE_CLEAR = 3
+SCENE_GAME_OVER = 4
 
 current_scene = SCENE_SPLASH
 splash_start_time = None
+stage_clear_start_time = None
 
 # 게임 보드 (0: 빈칸, 1: 블록)
 board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
@@ -183,6 +185,33 @@ def render_game():
     # 화면 클리어 후 출력 (ANSI escape code 사용으로 깜빡임 방지)
     print('\033[H\033[J' + '\n'.join(screen_buffer), end='', flush=True)
 
+def render_stage_clear():
+    """스테이지 클리어 화면 렌더링"""
+    screen_buffer = []
+    screen_buffer.append("")
+    screen_buffer.append("")
+    screen_buffer.append("")
+    screen_buffer.append("     ███████╗████████╗ █████╗  ██████╗ ███████╗")
+    screen_buffer.append("     ██╔════╝╚══██╔══╝██╔══██╗██╔════╝ ██╔════╝")
+    screen_buffer.append("     ███████╗   ██║   ███████║██║  ███╗█████╗")
+    screen_buffer.append("     ╚════██║   ██║   ██╔══██║██║   ██║██╔══╝")
+    screen_buffer.append("     ███████║   ██║   ██║  ██║╚██████╔╝███████╗")
+    screen_buffer.append("     ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝")
+    screen_buffer.append("")
+    screen_buffer.append("      ██████╗██╗     ███████╗ █████╗ ██████╗ ██╗")
+    screen_buffer.append("     ██╔════╝██║     ██╔════╝██╔══██╗██╔══██╗██║")
+    screen_buffer.append("     ██║     ██║     █████╗  ███████║██████╔╝██║")
+    screen_buffer.append("     ██║     ██║     ██╔══╝  ██╔══██║██╔══██╗╚═╝")
+    screen_buffer.append("     ╚██████╗███████╗███████╗██║  ██║██║  ██║██╗")
+    screen_buffer.append("      ╚═════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝")
+    screen_buffer.append("")
+    screen_buffer.append(f"             STAGE {current_stage - 1} COMPLETE!")
+    screen_buffer.append("")
+    screen_buffer.append(f"          Moving to STAGE {current_stage}...")
+    screen_buffer.append("")
+
+    print('\033[H\033[J' + '\n'.join(screen_buffer), end='', flush=True)
+
 def render_game_over():
     """게임 오버 화면 렌더링"""
     screen_buffer = []
@@ -219,6 +248,8 @@ def render():
         render_title()
     elif current_scene == SCENE_GAME:
         render_game()
+    elif current_scene == SCENE_STAGE_CLEAR:
+        render_stage_clear()
     elif current_scene == SCENE_GAME_OVER:
         render_game_over()
 
@@ -350,9 +381,13 @@ def clear_lines():
 
 def next_stage():
     """다음 스테이지로 진행"""
-    global current_stage, board
+    global current_stage, board, current_scene, stage_clear_start_time
 
     current_stage += 1
+
+    # 스테이지 클리어 씬으로 전환
+    current_scene = SCENE_STAGE_CLEAR
+    stage_clear_start_time = time.time()
 
     # 보드 초기화
     board = [[0 for _ in range(BOARD_WIDTH)] for _ in range(BOARD_HEIGHT)]
@@ -472,6 +507,13 @@ try:
                         current_scene = SCENE_GAME_OVER
                 last_drop = current_time
 
+            time.sleep(0.05)
+
+        elif current_scene == SCENE_STAGE_CLEAR:
+            # 스테이지 클리어는 2초 후 자동으로 게임으로 복귀
+            if stage_clear_start_time and current_time - stage_clear_start_time > 2.0:
+                current_scene = SCENE_GAME
+                last_drop = current_time
             time.sleep(0.05)
 
         elif current_scene == SCENE_GAME_OVER:
