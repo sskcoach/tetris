@@ -43,6 +43,9 @@ def create_empty_board(width, height):
     return [[' .' for _ in range(width)] for _ in range(height)]
 
 def format_board(board):
+    """
+    보드 데이터를 출력 가능한 문자열 리스트로 변환합니다.
+    """
     lines = ["<|" + "".join(row) + "|>") for row in board]
     lines.append("=" * (BOARD_WIDTH * 2 + 4))
     lines.append("\/" * ((BOARD_WIDTH * 2 + 4) // 2))
@@ -78,7 +81,7 @@ class NonBlockingInput:
         tty.setcbreak(sys.stdin.fileno())
         return self
     def __exit__(self, type, value, traceback):
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings) # Typo here
     def get_char(self):
         last_char = None
         while select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
