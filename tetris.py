@@ -64,6 +64,28 @@ def draw_board(board):
     print("\\/" * ((BOARD_WIDTH * 2 + 4) // 2)) # \\/가 2칸이므로 전체 너비/2
 
 
+import os
+import time
+import random
+import sys
+import tty
+import termios
+import select
+
+class NonBlockingInput:
+    def __enter__(self):
+        self.old_settings = termios.tcgetattr(sys.stdin)
+        tty.setcbreak(sys.stdin.fileno())
+        return self
+
+    def __exit__(self, type, value, traceback):
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+
+    def get_char(self):
+        if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+            return sys.stdin.read(1)
+        return None
+
 def place_block(board, block_shape, position):
     """
     주어진 위치에 블록을 보드에 배치합니다.
@@ -76,10 +98,6 @@ def place_block(board, block_shape, position):
                 if 0 <= pos_y + r < len(board) and 0 <= pos_x + c < len(board[0]):
                     board[pos_y + r][pos_x + c] = '[]'
     return board # 수정된 보드를 반환합니다.
-
-import os
-import time
-import random
 
 def check_collision(board, block_shape, position):
     """
@@ -95,54 +113,77 @@ def check_collision(board, block_shape, position):
                 # 바닥 충돌 확인
                 if not (pos_y + r < BOARD_HEIGHT):
                     return True
-                # 다른 블록과 충돌 확인
-                if board[pos_y + r][pos_x + c] == '[]':
+                # 다른 블록과 충돌 확인 (y+r이 보드 안에 있을 때만)
+                if 0 <= pos_y + r < BOARD_HEIGHT and board[pos_y + r][pos_x + c] == '[]':
                     return True
     return False
 
 if __name__ == "__main__":
-    board = create_empty_board(BOARD_WIDTH, BOARD_HEIGHT)
-    block_keys = list(TETROMINOS.keys())
-    current_block_shape = TETROMINOS[random.choice(block_keys)]
-    block_position = [3, 0] # 가변성을 위해 리스트 사용
-    game_over = False
+    with NonBlockingInput() as nbi:
+        board = create_empty_board(BOARD_WIDTH, BOARD_HEIGHT)
+        block_keys = list(TETROMINOS.keys())
+        current_block_shape = TETROMINOS[random.choice(block_keys)]
+        block_position = [3, 0]
+        game_over = False
+        
+        gravity_timer = 0
+        gravity_speed = 5 # 5 * 0.1초 = 0.5초마다 한 칸씩 하강
+        
+        while not game_over:
+            gravity_timer += 1
+            
+            # --- 입력 처리 ---
+            char = nbi.get_char()
+            
+            if char == 'a': # 왼쪽
+                block_position[0] -= 1
+                if check_collision(board, current_block_shape, block_position):
+                    block_position[0] += 1
+            
+            elif char == 'd': # 오른쪽
+                block_position[0] += 1
+                if check_collision(board, current_block_shape, block_position):
+                    block_position[0] -= 1
 
-    while not game_over:
-        # 1. 중력: 블록을 아래로 한 칸 이동
-        block_position[1] += 1
+            elif char == 'w': # 회전
+                rotated_block = rotate_clockwise(current_block_shape)
+                if not check_collision(board, rotated_block, block_position):
+                    current_block_shape = rotated_block
 
-        # 2. 충돌 확인
-        if check_collision(board, current_block_shape, block_position):
-            # 충돌 시, 블록을 이전 위치로 되돌림
-            block_position[1] -= 1
+            elif char == 's': # 아래로
+                block_position[1] += 1
+                if check_collision(board, current_block_shape, block_position):
+                    block_position[1] -= 1
             
-            # 블록을 보드에 합침
-            board = place_block(board, current_block_shape, block_position)
-            
-            # 새 블록 생성
-            current_block_shape = TETROMINOS[random.choice(block_keys)]
-            block_position = [3, 0]
-            
-            # 새 블록이 즉시 충돌하면 게임 오버
-            if check_collision(board, current_block_shape, block_position):
+            elif char == 'q': # 종료
                 game_over = True
 
-        # 3. 렌더링
-        # 그리기를 위한 임시 보드 생성 (기존 보드는 그대로 유지)
-        temp_board = [row[:] for row in board]
-        
-        # 현재 움직이는 블록을 임시 보드에 그림
-        temp_board = place_block(temp_board, current_block_shape, block_position)
+            # --- 중력 처리 ---
+            if gravity_timer >= gravity_speed:
+                gravity_timer = 0
+                block_position[1] += 1
+                if check_collision(board, current_block_shape, block_position):
+                    block_position[1] -= 1
+                    board = place_block(board, current_block_shape, block_position)
+                    
+                    current_block_shape = TETROMINOS[random.choice(block_keys)]
+                    block_position = [3, 0]
+                    
+                    if check_collision(board, current_block_shape, block_position):
+                        game_over = True
+            
+            # --- 렌더링 ---
+            temp_board = [row[:] for row in board]
+            temp_board = place_block(temp_board, current_block_shape, block_position)
 
-        # 화면을 지우고 보드 그리기
-        os.system('cls' if os.name == 'nt' else 'clear')
-        print("--- 테트리스 게임 화면 ---")
-        draw_board(temp_board)
-        
-        # 4. 속도 조절
-        time.sleep(0.5)
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print("--- 테트리스 게임 ---")
+            draw_board(temp_board)
+            print("조작: a(왼쪽), d(오른쪽), w(회전), s(아래로), q(종료)")
+            
+            time.sleep(0.1)
 
     print("--- GAME OVER ---")
-    draw_board(board) # 최종 보드 상태를 보여줍니다.
+    draw_board(board)
 
 
