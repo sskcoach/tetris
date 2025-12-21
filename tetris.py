@@ -40,6 +40,30 @@ def print_block(block):
     for row in block:
         print("".join(row))
 
+BOARD_WIDTH = 10
+BOARD_HEIGHT = 20
+
+def create_empty_board(width, height):
+    """
+    지정된 너비와 높이의 빈 테트리스 보드를 생성합니다.
+    빈 공간은 ' .'으로 채워집니다.
+    """
+    board = [[' .' for _ in range(width)] for _ in range(height)]
+    return board
+
+def draw_board(board):
+    """
+    테트리스 보드를 터미널에 그립니다.
+    양쪽 벽은 <| 와 |> 형태이고, 바닥은 ====== 와 \/\/\/ 형태입니다.
+    """
+    for row in board:
+        print("<|" + "".join(row) + "|>")
+    
+    # 바닥 경계선
+    print("=" * (BOARD_WIDTH * 2 + 4)) # 셀 너비가 2이므로 *2, 벽 너비 +4
+    print("\\/" * ((BOARD_WIDTH * 2 + 4) // 2)) # \\/가 2칸이므로 전체 너비/2
+
+
 if __name__ == "__main__":
     print("테트리스 블록 7종 및 회전 모습 출력:")
     for name, shape in TETROMINOS.items():
@@ -75,3 +99,8 @@ if __name__ == "__main__":
             display_grid.append(combined_row)
         
         print_block(display_grid)
+
+    print("\n--- 빈 테트리스 보드 ---")
+    empty_board = create_empty_board(BOARD_WIDTH, BOARD_HEIGHT)
+    draw_board(empty_board)
+
