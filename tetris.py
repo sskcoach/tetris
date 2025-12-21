@@ -108,16 +108,44 @@ def check_collision(board, block_shape, position):
     for r, row_data in enumerate(block_shape):
         for c, cell_data in enumerate(row_data):
             if cell_data == '[]':
-                # 벽 충돌 확인
                 if not (0 <= pos_x + c < BOARD_WIDTH):
                     return True
-                # 바닥 충돌 확인
                 if not (pos_y + r < BOARD_HEIGHT):
                     return True
-                # 다른 블록과 충돌 확인 (y+r이 보드 안에 있을 때만)
                 if 0 <= pos_y + r < BOARD_HEIGHT and board[pos_y + r][pos_x + c] == '[]':
                     return True
     return False
+
+def clear_lines(board):
+    """
+    가득 찬 줄을 지우고, 지운 만큼 위에 새로운 빈 줄을 추가합니다.
+    """
+    lines_cleared = 0
+    new_board = []
+    for row in board:
+        if all(cell == '[]' for cell in row):
+            lines_cleared += 1
+        else:
+            new_board.append(row)
+    
+    for _ in range(lines_cleared):
+        new_board.insert(0, [' .' for _ in range(BOARD_WIDTH)])
+        
+    return new_board, lines_cleared
+
+def handle_block_landing(board, block_shape, position, block_keys):
+    """
+    블록 착지 시의 로직(합치기, 줄 제거, 새 블록 생성)을 처리합니다.
+    """
+    board = place_block(board, block_shape, position)
+    board, _ = clear_lines(board) # lines_cleared는 나중에 점수계산에 사용
+    
+    new_shape = TETROMINOS[random.choice(block_keys)]
+    new_position = [3, 0]
+    
+    game_over = check_collision(board, new_shape, new_position)
+    
+    return board, new_shape, new_position, game_over
 
 if __name__ == "__main__":
     with NonBlockingInput() as nbi:
@@ -128,30 +156,28 @@ if __name__ == "__main__":
         game_over = False
         
         gravity_timer = 0
-        gravity_speed = 5 # 5 * 0.1초 = 0.5초마다 한 칸씩 하강
-        
+        gravity_speed = 5
+
         while not game_over:
             gravity_timer += 1
-            
-            # --- 입력 처리 ---
             char = nbi.get_char()
-            
-            if char == 'a': # 왼쪽
+
+            if char == 'a':
                 block_position[0] -= 1
                 if check_collision(board, current_block_shape, block_position):
                     block_position[0] += 1
             
-            elif char == 'd': # 오른쪽
+            elif char == 'd':
                 block_position[0] += 1
                 if check_collision(board, current_block_shape, block_position):
                     block_position[0] -= 1
 
-            elif char == 'w': # 회전
+            elif char == 'w':
                 rotated_block = rotate_clockwise(current_block_shape)
                 if not check_collision(board, rotated_block, block_position):
                     current_block_shape = rotated_block
 
-            elif char == 's': # 아래로
+            elif char == 's':
                 block_position[1] += 1
                 if check_collision(board, current_block_shape, block_position):
                     block_position[1] -= 1
@@ -160,40 +186,27 @@ if __name__ == "__main__":
                 while not check_collision(board, current_block_shape, block_position):
                     block_position[1] += 1
                 block_position[1] -= 1
-                board = place_block(board, current_block_shape, block_position)
-                
-                current_block_shape = TETROMINOS[random.choice(block_keys)]
-                block_position = [3, 0]
-                
-                if check_collision(board, current_block_shape, block_position):
-                    game_over = True
+                board, current_block_shape, block_position, game_over = handle_block_landing(board, current_block_shape, block_position, block_keys)
                 gravity_timer = 0
             
-            elif char == 'q': # 종료
+            elif char == 'q':
                 game_over = True
 
-            # --- 중력 처리 ---
             if gravity_timer >= gravity_speed:
                 gravity_timer = 0
                 block_position[1] += 1
                 if check_collision(board, current_block_shape, block_position):
                     block_position[1] -= 1
-                    board = place_block(board, current_block_shape, block_position)
-                    
-                    current_block_shape = TETROMINOS[random.choice(block_keys)]
-                    block_position = [3, 0]
-                    
-                    if check_collision(board, current_block_shape, block_position):
-                        game_over = True
-            
-            # --- 렌더링 ---
-            temp_board = [row[:] for row in board]
-            temp_board = place_block(temp_board, current_block_shape, block_position)
+                    board, current_block_shape, block_position, game_over = handle_block_landing(board, current_block_shape, block_position, block_keys)
 
-            os.system('cls' if os.name == 'nt' else 'clear')
-            print("--- 테트리스 게임 ---")
-            draw_board(temp_board)
-            print("조작: a(왼쪽), d(오른쪽), w(회전), s(아래로), 스페이스바(하드 드롭), q(종료)")
+            if not game_over:
+                temp_board = [row[:] for row in board]
+                temp_board = place_block(temp_board, current_block_shape, block_position)
+
+                os.system('cls' if os.name == 'nt' else 'clear')
+                print("--- 테트리스 게임 ---")
+                draw_board(temp_board)
+                print("조작: a(왼쪽), d(오른쪽), w(회전), s(아래로), 스페이스바(하드 드롭), q(종료)")
             
             time.sleep(0.1)
 
