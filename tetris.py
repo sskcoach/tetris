@@ -1,6 +1,13 @@
 # tetris.py
 
-# tetris.py
+import os
+import time
+import random
+import sys
+import tty
+import termios
+import select
+from itertools import zip_longest
 
 TETROMINOS = {
     'I': [['  ', '[]', '  ', '  '],
@@ -26,61 +33,52 @@ TETROMINOS = {
           ['  ', '  ', '  ']]
 }
 
-def rotate_clockwise(block):
-    """
-    주어진 블록을 시계 방향으로 90도 회전합니다.
-    """
-    return [list(row[::-1]) for row in zip(*block)]
-
-
-def print_block(block):
-    """
-    주어진 블록 모양을 터미널에 출력합니다.
-    """
-    for row in block:
-        print("".join(row))
-
 BOARD_WIDTH = 10
 BOARD_HEIGHT = 20
 
+def rotate_clockwise(block):
+    return [list(row[::-1]) for row in zip(*block)]
+
 def create_empty_board(width, height):
-    """
-    지정된 너비와 높이의 빈 테트리스 보드를 생성합니다.
-    빈 공간은 ' .'으로 채워집니다.
-    """
-    board = [[' .' for _ in range(width)] for _ in range(height)]
-    return board
+    return [[' .' for _ in range(width)] for _ in range(height)]
 
-def draw_board(board):
-    """
-    테트리스 보드를 터미널에 그립니다.
-    양쪽 벽은 <| 와 |> 형태이고, 바닥은 ====== 와 \/\/\/ 형태입니다.
-    """
-    for row in board:
-        print("<|" + "".join(row) + "|>")
-    
-    # 바닥 경계선
-    print("=" * (BOARD_WIDTH * 2 + 4)) # 셀 너비가 2이므로 *2, 벽 너비 +4
-    print("\\/" * ((BOARD_WIDTH * 2 + 4) // 2)) # \\/가 2칸이므로 전체 너비/2
+def format_board(board):
+    lines = ["<|" + "".join(row) + "|>") for row in board]
+    lines.append("=" * (BOARD_WIDTH * 2 + 4))
+    lines.append("\/" * ((BOARD_WIDTH * 2 + 4) // 2))
+    return lines
 
+def format_preview(preview_keys):
+    lines = ["  다음 블록"]
+    lines.append(" " + "-"*10)
+    if not preview_keys:
+        return lines
+    for key in preview_keys:
+        shape = TETROMINOS[key]
+        canvas = [['  ' for _ in range(4)] for _ in range(4)]
+        shape_h, shape_w = len(shape), len(shape[0])
+        start_y, start_x = (4 - shape_h) // 2, (4 - shape_w) // 2
+        for r in range(shape_h):
+            for c in range(shape_w):
+                if shape[r][c] == '[]':
+                    canvas[start_y + r][start_x + c] = '[]'
+        for row in canvas:
+            lines.append("  " + "".join(row))
+        lines.append(" " + "-"*10)
+    return lines
 
-import os
-import time
-import random
-import sys
-import tty
-import termios
-import select
+def replenish_queue(queue, keys):
+    new_bag = list(keys)
+    random.shuffle(new_bag)
+    queue.extend(new_bag)
 
 class NonBlockingInput:
     def __enter__(self):
         self.old_settings = termios.tcgetattr(sys.stdin)
         tty.setcbreak(sys.stdin.fileno())
         return self
-
     def __exit__(self, type, value, traceback):
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
-
     def get_char(self):
         last_char = None
         while select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
@@ -88,73 +86,54 @@ class NonBlockingInput:
         return last_char
 
 def place_block(board, block_shape, position):
-    """
-    주어진 위치에 블록을 보드에 배치합니다.
-    """
     pos_x, pos_y = position
     for r, row_data in enumerate(block_shape):
         for c, cell_data in enumerate(row_data):
             if cell_data == '[]':
-                # 보드 경계를 확인합니다.
                 if 0 <= pos_y + r < len(board) and 0 <= pos_x + c < len(board[0]):
                     board[pos_y + r][pos_x + c] = '[]'
-    return board # 수정된 보드를 반환합니다.
+    return board
 
 def check_collision(board, block_shape, position):
-    """
-    주어진 위치에서 블록이 보드 경계나 다른 블록과 충돌하는지 확인합니다.
-    """
     pos_x, pos_y = position
     for r, row_data in enumerate(block_shape):
         for c, cell_data in enumerate(row_data):
             if cell_data == '[]':
-                if not (0 <= pos_x + c < BOARD_WIDTH):
-                    return True
-                if not (pos_y + r < BOARD_HEIGHT):
-                    return True
-                if 0 <= pos_y + r < BOARD_HEIGHT and board[pos_y + r][pos_x + c] == '[]':
-                    return True
+                if not (0 <= pos_x + c < BOARD_WIDTH): return True
+                if not (pos_y + r < BOARD_HEIGHT): return True
+                if 0 <= pos_y + r < BOARD_HEIGHT and board[pos_y + r][pos_x + c] == '[]': return True
     return False
 
 def clear_lines(board):
-    """
-    가득 찬 줄을 지우고, 지운 만큼 위에 새로운 빈 줄을 추가합니다.
-    """
-    lines_cleared = 0
-    new_board = []
-    for row in board:
-        if all(cell == '[]' for cell in row):
-            lines_cleared += 1
-        else:
-            new_board.append(row)
-    
+    new_board = [row for row in board if not all(cell == '[]' for cell in row)]
+    lines_cleared = BOARD_HEIGHT - len(new_board)
     for _ in range(lines_cleared):
         new_board.insert(0, [' .' for _ in range(BOARD_WIDTH)])
-        
     return new_board, lines_cleared
 
-def handle_block_landing(board, block_shape, position, block_keys):
-    """
-    블록 착지 시의 로직(합치기, 줄 제거, 새 블록 생성)을 처리합니다.
-    """
+def handle_block_landing(board, block_shape, position, block_queue, block_keys):
     board = place_block(board, block_shape, position)
-    board, _ = clear_lines(board) # lines_cleared는 나중에 점수계산에 사용
-    
-    new_shape = TETROMINOS[random.choice(block_keys)]
+    board, _ = clear_lines(board)
+    if len(block_queue) < 4:
+        replenish_queue(block_queue, block_keys)
+    next_block_key = block_queue.pop(0)
+    new_shape = TETROMINOS[next_block_key]
     new_position = [3, 0]
-    
     game_over = check_collision(board, new_shape, new_position)
-    
-    return board, new_shape, new_position, game_over
+    return board, new_shape, new_position, game_over, block_queue
 
 if __name__ == "__main__":
     with NonBlockingInput() as nbi:
         board = create_empty_board(BOARD_WIDTH, BOARD_HEIGHT)
         block_keys = list(TETROMINOS.keys())
-        current_block_shape = TETROMINOS[random.choice(block_keys)]
+        block_queue = []
+        replenish_queue(block_queue, block_keys)
+        replenish_queue(block_queue, block_keys)
+
+        current_block_key = block_queue.pop(0)
+        current_block_shape = TETROMINOS[current_block_key]
         block_position = [3, 0]
         game_over = False
-        
         gravity_timer = 0
         gravity_speed = 5
 
@@ -164,31 +143,22 @@ if __name__ == "__main__":
 
             if char == 'a':
                 block_position[0] -= 1
-                if check_collision(board, current_block_shape, block_position):
-                    block_position[0] += 1
-            
+                if check_collision(board, current_block_shape, block_position): block_position[0] += 1
             elif char == 'd':
                 block_position[0] += 1
-                if check_collision(board, current_block_shape, block_position):
-                    block_position[0] -= 1
-
+                if check_collision(board, current_block_shape, block_position): block_position[0] -= 1
             elif char == 'w':
-                rotated_block = rotate_clockwise(current_block_shape)
-                if not check_collision(board, rotated_block, block_position):
-                    current_block_shape = rotated_block
-
+                rotated = rotate_clockwise(current_block_shape)
+                if not check_collision(board, rotated, block_position): current_block_shape = rotated
             elif char == 's':
                 block_position[1] += 1
-                if check_collision(board, current_block_shape, block_position):
-                    block_position[1] -= 1
-            
-            elif char == ' ': # 하드 드롭
+                if check_collision(board, current_block_shape, block_position): block_position[1] -= 1
+            elif char == ' ':
                 while not check_collision(board, current_block_shape, block_position):
                     block_position[1] += 1
                 block_position[1] -= 1
-                board, current_block_shape, block_position, game_over = handle_block_landing(board, current_block_shape, block_position, block_keys)
+                board, current_block_shape, block_position, game_over, block_queue = handle_block_landing(board, current_block_shape, block_position, block_queue, block_keys)
                 gravity_timer = 0
-            
             elif char == 'q':
                 game_over = True
 
@@ -197,20 +167,25 @@ if __name__ == "__main__":
                 block_position[1] += 1
                 if check_collision(board, current_block_shape, block_position):
                     block_position[1] -= 1
-                    board, current_block_shape, block_position, game_over = handle_block_landing(board, current_block_shape, block_position, block_keys)
+                    board, current_block_shape, block_position, game_over, block_queue = handle_block_landing(board, current_block_shape, block_position, block_queue, block_keys)
 
             if not game_over:
                 temp_board = [row[:] for row in board]
                 temp_board = place_block(temp_board, current_block_shape, block_position)
+                
+                board_lines = format_board(temp_board)
+                preview_keys = block_queue[:3]
+                preview_lines = format_preview(preview_keys)
 
                 os.system('cls' if os.name == 'nt' else 'clear')
                 print("--- 테트리스 게임 ---")
-                draw_board(temp_board)
-                print("조작: a(왼쪽), d(오른쪽), w(회전), s(아래로), 스페이스바(하드 드롭), q(종료)")
+                for board_line, preview_line in zip_longest(board_lines, preview_lines, fillvalue=""):
+                    print(f"{board_line}  {preview_line}")
+                print("\n조작: a(왼쪽), d(오른쪽), w(회전), s(아래로), 스페이스바(하드 드롭), q(종료)")
             
             time.sleep(0.1)
 
     print("--- GAME OVER ---")
-    draw_board(board)
-
-
+    final_board_lines = format_board(board)
+    for line in final_board_lines:
+        print(line)
