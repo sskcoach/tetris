@@ -156,6 +156,19 @@ if __name__ == "__main__":
                 if check_collision(board, current_block_shape, block_position):
                     block_position[1] -= 1
             
+            elif char == ' ': # 하드 드롭
+                while not check_collision(board, current_block_shape, block_position):
+                    block_position[1] += 1
+                block_position[1] -= 1
+                board = place_block(board, current_block_shape, block_position)
+                
+                current_block_shape = TETROMINOS[random.choice(block_keys)]
+                block_position = [3, 0]
+                
+                if check_collision(board, current_block_shape, block_position):
+                    game_over = True
+                gravity_timer = 0
+            
             elif char == 'q': # 종료
                 game_over = True
 
@@ -180,7 +193,7 @@ if __name__ == "__main__":
             os.system('cls' if os.name == 'nt' else 'clear')
             print("--- 테트리스 게임 ---")
             draw_board(temp_board)
-            print("조작: a(왼쪽), d(오른쪽), w(회전), s(아래로), q(종료)")
+            print("조작: a(왼쪽), d(오른쪽), w(회전), s(아래로), 스페이스바(하드 드롭), q(종료)")
             
             time.sleep(0.1)
 
