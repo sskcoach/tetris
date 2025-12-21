@@ -64,43 +64,33 @@ def draw_board(board):
     print("\\/" * ((BOARD_WIDTH * 2 + 4) // 2)) # \\/가 2칸이므로 전체 너비/2
 
 
+def place_block(board, block_shape, position):
+    """
+    주어진 위치에 블록을 보드에 배치합니다.
+    """
+    pos_x, pos_y = position
+    for r, row_data in enumerate(block_shape):
+        for c, cell_data in enumerate(row_data):
+            if cell_data == '[]':
+                # 보드 경계를 확인합니다.
+                if 0 <= pos_y + r < len(board) and 0 <= pos_x + c < len(board[0]):
+                    board[pos_y + r][pos_x + c] = '[]'
+    return board # 수정된 보드를 반환합니다.
+
 if __name__ == "__main__":
-    print("테트리스 블록 7종 및 회전 모습 출력:")
-    for name, shape in TETROMINOS.items():
-        print(f"\n--- {name} 블록 ---")
-        
-        rotations = [shape]
-        current_shape = shape
-        for _ in range(3):
-            current_shape = rotate_clockwise(current_shape)
-            rotations.append(current_shape)
+    # 새로운 빈 보드를 생성합니다.
+    game_board = create_empty_board(BOARD_WIDTH, BOARD_HEIGHT)
 
-        # 모든 회전 형태를 일관된 디스플레이를 위해 최대 높이를 결정합니다.
-        max_height = max(len(r) for r in rotations if r)
-        
-        # 출력을 위해 모든 회전 형태를 단일 디스플레이 블록으로 결합합니다.
-        display_grid = []
-        for i in range(max_height):
-            combined_row = []
-            for j, rot_shape in enumerate(rotations):
-                shape_height = len(rot_shape)
-                shape_width = len(rot_shape[0]) if shape_height > 0 else 0
+    # 블록과 위치를 선택합니다.
+    current_block = TETROMINOS['T']
+    # 너비가 3인 블록을 중앙에 위치시킵니다. x = (10-3)//2 = 3
+    block_position = (3, 0) 
 
-                if i < shape_height:
-                    combined_row.extend(rot_shape[i])
-                else:
-                    # 짧은 모양은 빈 공간으로 채웁니다.
-                    combined_row.extend(['  '] * shape_width)
+    # 보드에 블록을 배치합니다.
+    game_board = place_block(game_board, current_block, block_position)
 
-                # 모양 사이에 구분자를 추가합니다.
-                if j < len(rotations) - 1:
-                    combined_row.extend([' | '])
-            
-            display_grid.append(combined_row)
-        
-        print_block(display_grid)
+    # 블록이 포함된 보드를 그립니다.
+    print("--- 테트리스 게임 화면 ---")
+    draw_board(game_board)
 
-    print("\n--- 빈 테트리스 보드 ---")
-    empty_board = create_empty_board(BOARD_WIDTH, BOARD_HEIGHT)
-    draw_board(empty_board)
 
