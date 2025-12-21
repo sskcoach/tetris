@@ -82,9 +82,10 @@ class NonBlockingInput:
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
 
     def get_char(self):
-        if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
-            return sys.stdin.read(1)
-        return None
+        last_char = None
+        while select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+            last_char = sys.stdin.read(1)
+        return last_char
 
 def place_block(board, block_shape, position):
     """
