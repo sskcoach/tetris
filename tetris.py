@@ -46,12 +46,15 @@ def format_board(board):
     """
     보드 데이터를 출력 가능한 문자열 리스트로 변환합니다.
     """
-    lines = ["<|" + "".join(row) + "|>") for row in board]
-    lines.append("=" * (BOARD_WIDTH * 2 + 4))
-    lines.append("\/" * ((BOARD_WIDTH * 2 + 4) // 2))
+    lines = ["◀" + "".join(row) + "▶" for row in board] # New side walls
+    lines.append("=" * (BOARD_WIDTH * 2 + 2)) # Adjusted for 1-char walls
+    lines.append("\/" * ((BOARD_WIDTH * 2 + 2) // 2)) # Reverted to original bottom characters
     return lines
 
 def format_preview(preview_keys):
+    """
+    미리보기 블록 데이터를 출력 가능한 문자열 리스트로 변환합니다.
+    """
     lines = ["  다음 블록"]
     lines.append(" " + "-"*10)
     if not preview_keys:
@@ -81,7 +84,7 @@ class NonBlockingInput:
         tty.setcbreak(sys.stdin.fileno())
         return self
     def __exit__(self, type, value, traceback):
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings) # Typo here
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
     def get_char(self):
         last_char = None
         while select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
@@ -126,7 +129,10 @@ def handle_block_landing(board, block_shape, position, block_queue, block_keys):
     return board, new_shape, new_position, game_over, block_queue
 
 if __name__ == "__main__":
-    with NonBlockingInput() as nbi:
+    # A single try/finally to ensure terminal settings are restored.
+    old_settings = termios.tcgetattr(sys.stdin)
+    try:
+        tty.setcbreak(sys.stdin.fileno())
         board = create_empty_board(BOARD_WIDTH, BOARD_HEIGHT)
         block_keys = list(TETROMINOS.keys())
         block_queue = []
@@ -139,10 +145,18 @@ if __name__ == "__main__":
         game_over = False
         gravity_timer = 0
         gravity_speed = 5
-
+        
+        # NonBlockingInput class is not used here, direct function calls.
+        def get_char_non_blocking():
+            last_char = None
+            while select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+                last_char = sys.stdin.read(1)
+            return last_char
+        
         while not game_over:
             gravity_timer += 1
-            char = nbi.get_char()
+            
+            char = get_char_non_blocking() # Get a single char after flushing buffer if needed.
 
             if char == 'a':
                 block_position[0] -= 1
@@ -187,6 +201,8 @@ if __name__ == "__main__":
                 print("\n조작: a(왼쪽), d(오른쪽), w(회전), s(아래로), 스페이스바(하드 드롭), q(종료)")
             
             time.sleep(0.1)
+    finally:
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
     print("--- GAME OVER ---")
     final_board_lines = format_board(board)
