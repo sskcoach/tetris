@@ -10,29 +10,7 @@ import select
 from itertools import zip_longest
 from enum import Enum
 
-# --- 게임 상태 정의 ---
-class GameState(Enum):
-    SPLASH = 1
-    TITLE = 2
-    GAME = 3
-    NEXT_STAGE = 4
-    GAME_OVER = 5
-
-TETROMINOS = {
-    'I': [['  ', '[]', '  ', '  '], ['  ', '[]', '  ', '  '], ['  ', '[]', '  ', '  '], ['  ', '[]', '  ', '  ']],
-    'O': [['[]', '[]'], ['[]', '[]']],
-    'T': [['  ', '[]', '  '], ['[]', '[]', '[]'], ['  ', '  ', '  ']],
-    'J': [['  ', '[]', '  '], ['  ', '[]', '  '], ['[]', '[]', '  ']],
-    'L': [['  ', '[]', '  '], ['  ', '[]', '  '], ['  ', '[]', '[]']],
-    'S': [['  ', '[]', '[]'], ['[]', '[]', '  '], ['  ', '  ', '  ']],
-    'Z': [['[]', '[]', '  '], ['  ', '[]', '[]'], ['  ', '  ', '  ']]
-}
-
-BOARD_WIDTH = 10
-BOARD_HEIGHT = 20
-LEVEL_UP_LINES = 10
-
-# --- 유틸리티 및 헬퍼 함수 ---
+# --- 유틸리티 및 헬퍼 함수 (정의 순서 문제 해결을 위해 최상단으로 이동) --- 
 
 def rotate_clockwise(block):
     return [list(row[::-1]) for row in zip(*block)]
@@ -43,7 +21,7 @@ def create_empty_board(width, height):
 def format_board(board):
     lines = ["◀" + "".join(row) + "▶" for row in board]
     lines.append("=" * (BOARD_WIDTH * 2 + 2))
-    lines.append("\/" * ((BOARD_WIDTH * 2 + 2) // 2))
+    lines.append("VV" * ((BOARD_WIDTH * 2 + 2) // 2)) # Changed from \/ to VV
     return lines
 
 def format_preview(preview_keys):
@@ -107,6 +85,28 @@ def draw_text_screen(title, subtitle):
     print(f"{subtitle:^30}")
     print("\n\n")
     sys.stdout.flush()
+
+# --- 게임 상태 정의 ---
+class GameState(Enum):
+    SPLASH = 1
+    TITLE = 2
+    GAME = 3
+    NEXT_STAGE = 4
+    GAME_OVER = 5
+
+TETROMINOS = {
+    'I': [['  ', '[]', '  ', '  '], ['  ', '[]', '  ', '  '], ['  ', '[]', '  ', '  '], ['  ', '[]', '  ', '  ']],
+    'O': [['[]', '[]'], ['[]', '[]']],
+    'T': [['  ', '[]', '  '], ['[]', '[]', '[]'], ['  ', '  ', '  ']],
+    'J': [['  ', '[]', '  '], ['  ', '[]', '  '], ['[]', '[]', '  ']],
+    'L': [['  ', '[]', '  '], ['  ', '[]', '  '], ['  ', '[]', '[]']],
+    'S': [['  ', '[]', '[]'], ['[]', '[]', '  '], ['  ', '  ', '  ']],
+    'Z': [['[]', '[]', '  '], ['  ', '[]', '[]'], ['  ', '  ', '  ']]
+}
+
+BOARD_WIDTH = 10
+BOARD_HEIGHT = 20
+LEVEL_UP_LINES = 10
 
 # --- 각 SCENE 별 함수 ---
 
@@ -226,6 +226,20 @@ def run_game(nbi, level, score, total_lines_cleared):
         sys.stdout.flush()
         
         time.sleep(0.1)
+
+# --- NonBlockingInput 클래스 ---
+class NonBlockingInput:
+    def __enter__(self):
+        self.old_settings = termios.tcgetattr(sys.stdin)
+        tty.setcbreak(sys.stdin.fileno())
+        return self
+    def __exit__(self, type, value, traceback):
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+    def get_char(self):
+        last_char = None
+        while select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+            last_char = sys.stdin.read(1)
+        return last_char
 
 # --- 메인 상태 관리 루프 ---
 if __name__ == "__main__":
