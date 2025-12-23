@@ -40,6 +40,37 @@ def rotate_clockwise(block):
 def create_empty_board(width, height):
     return [[' .' for _ in range(width)] for _ in range(height)]
 
+def format_board(board):
+    """
+    보드 데이터를 출력 가능한 문자열 리스트로 변환합니다.
+    """
+    lines = ["◀" + "".join(row) + "▶" for row in board]
+    lines.append("=" * (BOARD_WIDTH * 2 + 2))
+    lines.append("\/" * ((BOARD_WIDTH * 2 + 2) // 2))
+    return lines
+
+def format_preview(preview_keys):
+    """
+    미리보기 블록 데이터를 출력 가능한 문자열 리스트로 변환합니다.
+    """
+    lines = ["  다음 블록"]
+    lines.append(" " + "-"*10)
+    if not preview_keys:
+        return lines
+    for key in preview_keys:
+        shape = TETROMINOS[key]
+        canvas = [['  ' for _ in range(4)] for _ in range(4)]
+        shape_h, shape_w = len(shape), len(shape[0])
+        start_y, start_x = (4 - shape_h) // 2, (4 - shape_w) // 2
+        for r in range(shape_h):
+            for c in range(shape_w):
+                if shape[r][c] == '[]':
+                    canvas[start_y + r][start_x + c] = '[]'
+        for row in canvas:
+            lines.append("  " + "".join(row))
+        lines.append(" " + "-"*10)
+    return lines
+
 def replenish_queue(queue, keys):
     new_bag = list(keys)
     random.shuffle(new_bag)
@@ -71,16 +102,29 @@ def clear_lines(board):
         new_board.insert(0, [' .' for _ in range(BOARD_WIDTH)])
     return new_board, lines_cleared
 
-def draw_text_screen(title, subtitle):
-    print(f"\x1b[H\x1b[2J", end="") # 화면 지우기
-    print("\n\n\n\n")
-    print("="*30)
-    print(f"{title:^30}")
-    print("="*30)
-    print("\n\n")
-    print(f"{subtitle:^30}")
-    print("\n\n")
-    sys.stdout.flush()
+def handle_block_landing(board, block_shape, position, block_queue, block_keys):
+    board = place_block(board, block_shape, position)
+    board, _ = clear_lines(board)
+    if len(block_queue) < 4:
+        replenish_queue(block_queue, block_keys)
+    next_block_key = block_queue.pop(0)
+    new_shape = TETROMINOS[next_block_key]
+    new_position = [3, 0]
+    game_over = check_collision(board, new_shape, new_position)
+    return board, new_shape, new_position, game_over, block_queue
+
+class NonBlockingInput: # NonBlockingInput class moved here
+    def __enter__(self):
+        self.old_settings = termios.tcgetattr(sys.stdin)
+        tty.setcbreak(sys.stdin.fileno())
+        return self
+    def __exit__(self, type, value, traceback):
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+    def get_char(self):
+        last_char = None
+        while select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+            last_char = sys.stdin.read(1)
+        return last_char
 
 # --- 각 SCENE 별 함수 ---
 
@@ -127,7 +171,7 @@ def run_game(nbi, level, score, total_lines_cleared):
     gravity_timer = 0
     gravity_speed = max(1, 5 - level) # 레벨에 따라 속도 증가
 
-    def handle_block_landing(board, shape, pos, queue, keys):
+    def handle_block_landing_in_game(board, shape, pos, queue, keys): # Renamed to avoid confusion if outside
         board = place_block(board, shape, pos)
         board, lines_cleared = clear_lines(board)
         
@@ -161,7 +205,7 @@ def run_game(nbi, level, score, total_lines_cleared):
             while not check_collision(board, current_block_shape, block_position):
                 block_position[1] += 1
             block_position[1] -= 1
-            board, current_block_shape, block_position, game_over, block_queue, lines_cleared = handle_block_landing(board, current_block_shape, block_position, block_queue, block_keys)
+            board, current_block_shape, block_position, game_over, block_queue, lines_cleared = handle_block_landing_in_game(board, current_block_shape, block_position, block_queue, block_keys)
             if game_over: return GameState.GAME_OVER, score, total_lines_cleared
             total_lines_cleared += lines_cleared
             score += lines_cleared * 100 * level
@@ -174,7 +218,7 @@ def run_game(nbi, level, score, total_lines_cleared):
             block_position[1] += 1
             if check_collision(board, current_block_shape, block_position):
                 block_position[1] -= 1
-                board, current_block_shape, block_position, game_over, block_queue, lines_cleared = handle_block_landing(board, current_block_shape, block_position, block_queue, block_keys)
+                board, current_block_shape, block_position, game_over, block_queue, lines_cleared = handle_block_landing_in_game(board, current_block_shape, block_position, block_queue, block_keys)
                 if game_over: return GameState.GAME_OVER, score, total_lines_cleared
                 total_lines_cleared += lines_cleared
                 score += lines_cleared * 100 * level
@@ -201,20 +245,6 @@ def run_game(nbi, level, score, total_lines_cleared):
         
         time.sleep(0.1)
 
-# --- NonBlockingInput 클래스 ---
-class NonBlockingInput:
-    def __enter__(self):
-        self.old_settings = termios.tcgetattr(sys.stdin)
-        tty.setcbreak(sys.stdin.fileno())
-        return self
-    def __exit__(self, type, value, traceback):
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
-    def get_char(self):
-        last_char = None
-        while select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
-            last_char = sys.stdin.read(1)
-        return last_char
-
 # --- 메인 상태 관리 루프 ---
 if __name__ == "__main__":
     current_state = GameState.SPLASH
@@ -222,11 +252,10 @@ if __name__ == "__main__":
     score = 0
     total_lines = 0
 
-    # NonBlockingInput 클래스가 with 블록을 벗어날 때 터미널 설정을 복원합니다.
-    # 만약 프로그램이 try 블록 내에서 예외로 종료되어도 __exit__이 호출됩니다.
     old_settings = termios.tcgetattr(sys.stdin)
     try:
-        with NonBlockingInput() as nbi:
+        tty.setcbreak(sys.stdin.fileno())
+        with NonBlockingInput() as nbi: # Using the class here
             while current_state is not None:
                 if current_state == GameState.SPLASH:
                     current_state = run_splash_screen()
