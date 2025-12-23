@@ -41,18 +41,12 @@ def create_empty_board(width, height):
     return [[' .' for _ in range(width)] for _ in range(height)]
 
 def format_board(board):
-    """
-    보드 데이터를 출력 가능한 문자열 리스트로 변환합니다.
-    """
     lines = ["◀" + "".join(row) + "▶" for row in board]
     lines.append("=" * (BOARD_WIDTH * 2 + 2))
     lines.append("\/" * ((BOARD_WIDTH * 2 + 2) // 2))
     return lines
 
 def format_preview(preview_keys):
-    """
-    미리보기 블록 데이터를 출력 가능한 문자열 리스트로 변환합니다.
-    """
     lines = ["  다음 블록"]
     lines.append(" " + "-"*10)
     if not preview_keys:
@@ -102,29 +96,17 @@ def clear_lines(board):
         new_board.insert(0, [' .' for _ in range(BOARD_WIDTH)])
     return new_board, lines_cleared
 
-def handle_block_landing(board, block_shape, position, block_queue, block_keys):
-    board = place_block(board, block_shape, position)
-    board, _ = clear_lines(board)
-    if len(block_queue) < 4:
-        replenish_queue(block_queue, block_keys)
-    next_block_key = block_queue.pop(0)
-    new_shape = TETROMINOS[next_block_key]
-    new_position = [3, 0]
-    game_over = check_collision(board, new_shape, new_position)
-    return board, new_shape, new_position, game_over, block_queue
-
-class NonBlockingInput: # NonBlockingInput class moved here
-    def __enter__(self):
-        self.old_settings = termios.tcgetattr(sys.stdin)
-        tty.setcbreak(sys.stdin.fileno())
-        return self
-    def __exit__(self, type, value, traceback):
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
-    def get_char(self):
-        last_char = None
-        while select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
-            last_char = sys.stdin.read(1)
-        return last_char
+def draw_text_screen(title, subtitle):
+    # This function is used to draw simple text screens like splash, title, game over
+    print(f"\x1b[H\x1b[2J", end="") # 화면 지우기
+    print("\n\n\n\n")
+    print("="*30)
+    print(f"{title:^30}")
+    print("="*30)
+    print("\n\n")
+    print(f"{subtitle:^30}")
+    print("\n\n")
+    sys.stdout.flush()
 
 # --- 각 SCENE 별 함수 ---
 
@@ -137,7 +119,7 @@ def run_title_screen(nbi):
     draw_text_screen("T E T R I S", "시작하려면 Enter를 누르세요")
     while True:
         char = nbi.get_char()
-        if char == '\r' or char == '\n':
+        if char == '\r' or char == '\n': # Enter key
             return GameState.GAME
         time.sleep(0.1)
 
@@ -154,7 +136,7 @@ def run_game_over_screen(nbi, score):
         if char == '\r' or char == '\n':
             return GameState.TITLE
         elif char == 'q':
-            return None # 게임 종료
+            return None # Exit game
         time.sleep(0.1)
 
 def run_game(nbi, level, score, total_lines_cleared):
@@ -171,7 +153,7 @@ def run_game(nbi, level, score, total_lines_cleared):
     gravity_timer = 0
     gravity_speed = max(1, 5 - level) # 레벨에 따라 속도 증가
 
-    def handle_block_landing_in_game(board, shape, pos, queue, keys): # Renamed to avoid confusion if outside
+    def handle_block_landing_in_game(board, shape, pos, queue, keys):
         board = place_block(board, shape, pos)
         board, lines_cleared = clear_lines(board)
         
@@ -255,7 +237,7 @@ if __name__ == "__main__":
     old_settings = termios.tcgetattr(sys.stdin)
     try:
         tty.setcbreak(sys.stdin.fileno())
-        with NonBlockingInput() as nbi: # Using the class here
+        with NonBlockingInput() as nbi:
             while current_state is not None:
                 if current_state == GameState.SPLASH:
                     current_state = run_splash_screen()
