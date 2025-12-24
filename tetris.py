@@ -9,43 +9,22 @@ import termios
 import select
 from itertools import zip_longest
 from enum import Enum
-import numpy as np
-import pyaudio
 
-# --- 사운드 합성 (PyAudio + NumPy) ---
-p = pyaudio.PyAudio()
-VOLUME = 0.2
-SAMPLING_RATE = 44100
-
-def generate_and_play_tone(frequency, duration):
-    try:
-        samples = (np.sin(2 * np.pi * np.arange(int(SAMPLING_RATE * duration)) * frequency / SAMPLING_RATE)).astype(np.float32)
-        stream = p.open(format=pyaudio.paFloat32, channels=1, rate=SAMPLING_RATE, output=True)
-        stream.write(VOLUME * samples)
-        stream.stop_stream()
-        stream.close()
-    except Exception:
-        # 오디오 장치 문제 등으로 오류 발생 시 조용히 실패
-        pass
-
+# --- 사운드 함수 (터미널 벨 사용) ---
 def play_move_sound():
-    generate_and_play_tone(1200, 0.03)
+    print('\a', end='', flush=True)
 
 def play_hard_drop_sound():
-    generate_and_play_tone(200, 0.1)
+    print('\a\a', end='', flush=True) # Two quick beeps
 
 def play_line_clear_sound():
-    generate_and_play_tone(600, 0.08)
-    generate_and_play_tone(800, 0.08)
-    generate_and_play_tone(1000, 0.08)
+    print('\a\a\a', end='', flush=True) # Three quick beeps
 
 def play_game_start_sound():
-    generate_and_play_tone(523, 0.1)
-    generate_and_play_tone(784, 0.1)
+    print('\a', end='', flush=True) # Simple beep for start
 
 def play_game_over_sound():
-    generate_and_play_tone(400, 0.2)
-    generate_and_play_tone(200, 0.3)
+    print('\a', end='', flush=True) # Simple beep for game over
 
 
 # --- 유틸리티 및 헬퍼 함수 ---
@@ -103,8 +82,13 @@ def check_collision(board, block_shape, position):
     return False
 
 def clear_lines(board):
-    new_board = [row for row in board if not all(cell == '\x1b[32m[]\x1b[0m' for cell in row)]
-    lines_cleared = BOARD_HEIGHT - len(new_board)
+    new_board = []
+    lines_cleared = 0
+    for row in board:
+        if all(cell == '\x1b[32m[]\x1b[0m' for cell in row):
+            lines_cleared += 1
+        else:
+            new_board.append(row)
     for _ in range(lines_cleared):
         new_board.insert(0, ['\x1b[32m .\x1b[0m' for _ in range(BOARD_WIDTH)])
     return new_board, lines_cleared
@@ -177,7 +161,6 @@ def run_game_over_screen(nbi, score):
         time.sleep(0.1)
 
 def run_game(nbi, level, score, total_lines_cleared):
-    # ... (rest of the run_game function is the same) 
     board = create_empty_board(BOARD_WIDTH, BOARD_HEIGHT)
     block_keys = list(TETROMINOS.keys())
     block_queue = []
@@ -325,6 +308,9 @@ if __name__ == "__main__":
                     current_state = run_game_over_screen(nbi, score)
     finally:
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-        p.terminate() # PyAudio 리소스 해제
+        # PyAudio 리소스 해제
+        # p가 전역 변수로 정의되었으므로, 이곳에서 p.terminate()를 호출합니다.
+        # p는 파일 상단에서 생성됩니다.
+        p.terminate()
 
     print("게임을 종료합니다.")
