@@ -137,24 +137,20 @@ def run_title_screen(nbi):
     while True:
         char = nbi.get_char()
         if char == '\r' or char == '\n':
-            play_game_start_sound()
             return GameState.GAME
         time.sleep(0.1)
 
 def run_next_stage_screen(level):
-    play_line_clear_sound()
     draw_text_screen(f"LEVEL {level-1} CLEAR!", f"잠시 후 LEVEL {level}을(를) 시작합니다.")
     time.sleep(3)
     return GameState.GAME
 
 def run_game_over_screen(nbi, score):
-    play_game_over_sound()
     draw_text_screen("GAME OVER", f"최종 점수: {score}")
     print(f"\x1b[32m{'다시 시작: Enter / 종료: Q':^30}\x1b[0m")
     while True:
         char = nbi.get_char()
         if char == '\r' or char == '\n':
-            play_move_sound()
             return GameState.TITLE
         elif char == 'q':
             return None
@@ -177,8 +173,7 @@ def run_game(nbi, level, score, total_lines_cleared):
     def handle_block_landing_in_game(board, shape, pos, queue, keys):
         board = place_block(board, shape, pos)
         board, lines_cleared = clear_lines(board)
-        if lines_cleared > 0:
-            play_line_clear_sound()
+        # Sound call removed
         
         if len(queue) < 4:
             replenish_queue(queue, keys)
@@ -194,36 +189,24 @@ def run_game(nbi, level, score, total_lines_cleared):
         gravity_timer += 1
         char = nbi.get_char()
 
-        moved = False
         if char == 'a':
             block_position[0] -= 1
             if check_collision(board, current_block_shape, block_position):
                 block_position[0] += 1
-            else:
-                moved = True
         elif char == 'd':
             block_position[0] += 1
             if check_collision(board, current_block_shape, block_position):
                 block_position[0] -= 1
-            else:
-                moved = True
         elif char == 'w':
             rotated = rotate_clockwise(current_block_shape)
             if not check_collision(board, rotated, block_position):
                 current_block_shape = rotated
-                moved = True
         elif char == 's':
             block_position[1] += 1
             if check_collision(board, current_block_shape, block_position):
                 block_position[1] -= 1
-            else:
-                moved = True
         
-        if moved:
-            play_move_sound()
-
         if char == ' ':
-            play_hard_drop_sound()
             while not check_collision(board, current_block_shape, block_position):
                 block_position[1] += 1
             block_position[1] -= 1
@@ -255,7 +238,7 @@ def run_game(nbi, level, score, total_lines_cleared):
         preview_keys = block_queue[:3]
         preview_lines = format_preview(preview_keys)
 
-        screen_buffer = [f"\x1b[32m--- LEVEL: {level} | SCORE: {score} ---\x1b[0m"]
+        screen_buffer = [f"\x1b[32m--- LEVEL: {level} | SCORE: {score} ---\\x1b[0m"]
         for board_line, preview_line in zip_longest(board_lines, preview_lines, fillvalue=""):
             screen_buffer.append(f"{board_line}  {preview_line}")
         screen_buffer.append(f"\n\x1b[32m조작: a, d, w, s, 스페이스바 | 종료: q\x1b[0m")
@@ -308,9 +291,6 @@ if __name__ == "__main__":
                     current_state = run_game_over_screen(nbi, score)
     finally:
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-        # PyAudio 리소스 해제
-        # p가 전역 변수로 정의되었으므로, 이곳에서 p.terminate()를 호출합니다.
-        # p는 파일 상단에서 생성됩니다.
-        p.terminate()
+        # PyAudio 리소스 해제는 이제 필요 없습니다.
 
     print("게임을 종료합니다.")
