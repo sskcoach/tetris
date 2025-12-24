@@ -10,37 +10,38 @@ import select
 from itertools import zip_longest
 from enum import Enum
 
-# --- 유틸리티 및 헬퍼 함수 (정의 순서 문제 해결을 위해 최상단으로 이동) --- 
+# --- 유틸리티 및 헬퍼 함수 (정의 순서 문제 해결을 위해 최상단으로 이동) ---
 
 def rotate_clockwise(block):
     return [list(row[::-1]) for row in zip(*block)]
 
 def create_empty_board(width, height):
-    return [[' .' for _ in range(width)] for _ in range(height)]
+    return [['\x1b[32m .\x1b[0m' for _ in range(width)] for _ in range(height)] # Green dots for empty cells
 
 def format_board(board):
-    lines = ["◀" + "".join(row) + "▶" for row in board]
-    lines.append("=" * (BOARD_WIDTH * 2 + 2))
-    lines.append("VV" * ((BOARD_WIDTH * 2 + 2) // 2)) # Changed from \/ to VV
+    lines = ["\x1b[32m◀\x1b[0m" + "".join(row) + "\x1b[32m▶\x1b[0m" for row in board] # Darker green walls
+    lines.append("\x1b[32m" + "=" * (BOARD_WIDTH * 2 + 2) + "\x1b[0m") # Darker green top border
+    lines.append("\x1b[32m" + "VV" * ((BOARD_WIDTH * 2 + 2) // 2) + "\x1b[0m") # Darker green bottom border
     return lines
 
 def format_preview(preview_keys):
-    lines = ["  다음 블록"]
-    lines.append(" " + "-"*10)
+    lines = ["\x1b[32m  다음 블록\x1b[0m"]
+    lines.append("\x1b[32m " + "-"*10 + "\x1b[0m")
     if not preview_keys:
         return lines
     for key in preview_keys:
         shape = TETROMINOS[key]
-        canvas = [['  ' for _ in range(4)] for _ in range(4)]
+        canvas = [['\x1b[32m .\x1b[0m' for _ in range(4)] for _ in range(4)] # Green dots for preview canvas
         shape_h, shape_w = len(shape), len(shape[0])
         start_y, start_x = (4 - shape_h) // 2, (4 - shape_w) // 2
         for r in range(shape_h):
             for c in range(shape_w):
-                if shape[r][c] == '[]':
-                    canvas[start_y + r][start_x + c] = '[]'
+                # TETROMINOS 정의에서 이미 색상이 적용되어 있으므로 여기서는 추가하지 않음
+                canvas[start_y + r][start_x + c] = shape[r][c]
+
         for row in canvas:
-            lines.append("  " + "".join(row))
-        lines.append(" " + "-"*10)
+            lines.append("  " + "".join(row)) # Preview lines themselves are already green because of TETROMINOS
+        lines.append("\x1b[32m " + "-"*10 + "\x1b[0m")
     return lines
 
 def replenish_queue(queue, keys):
@@ -52,37 +53,47 @@ def place_block(board, block_shape, position):
     pos_x, pos_y = position
     for r, row_data in enumerate(block_shape):
         for c, cell_data in enumerate(row_data):
-            if cell_data == '[]':
+            if cell_data == '\x1b[32m[]\x1b[0m': # Changed to match colored block
                 if 0 <= pos_y + r < len(board) and 0 <= pos_x + c < len(board[0]):
-                    board[pos_y + r][pos_x + c] = '[]'
+                    board[pos_y + r][pos_x + c] = '\x1b[32m[]\x1b[0m' # Changed to match colored block
     return board
 
 def check_collision(board, block_shape, position):
     pos_x, pos_y = position
     for r, row_data in enumerate(block_shape):
         for c, cell_data in enumerate(row_data):
-            if cell_data == '[]':
+            if cell_data == '\x1b[32m[]\x1b[0m': # Changed to match colored block
                 if not (0 <= pos_x + c < BOARD_WIDTH): return True
                 if not (pos_y + r < BOARD_HEIGHT): return True
-                if 0 <= pos_y + r < BOARD_HEIGHT and board[pos_y + r][pos_x + c] == '[]': return True
+                # Collision with other blocks (check for green block or non-empty cell)
+                # An empty cell is ' .'
+                if 0 <= pos_y + r < BOARD_HEIGHT and board[pos_y + r][pos_x + c] != '\x1b[32m .\x1b[0m': return True # Check against green dot
     return False
 
 def clear_lines(board):
-    new_board = [row for row in board if not all(cell == '[]' for cell in row)]
-    lines_cleared = BOARD_HEIGHT - len(new_board)
+    new_board = []
+    lines_cleared = 0
+    # Check for green block, not just '[]'
+    for row in board:
+        if all(cell == '\x1b[32m[]\x1b[0m' for cell in row):
+            lines_cleared += 1
+        else:
+            new_board.append(row)
+    
     for _ in range(lines_cleared):
-        new_board.insert(0, [' .' for _ in range(BOARD_WIDTH)])
+        new_board.insert(0, ['\x1b[32m .\x1b[0m' for _ in range(BOARD_WIDTH)]) # Green dots for new empty lines
+        
     return new_board, lines_cleared
 
 def draw_text_screen(title, subtitle):
     # This function is used to draw simple text screens like splash, title, game over
     print(f"\x1b[H\x1b[2J", end="") # 화면 지우기
     print("\n\n\n\n")
-    print("="*30)
-    print(f"{title:^30}")
-    print("="*30)
+    print("\x1b[32m" + "="*30 + "\x1b[0m") # Darker green title border
+    print(f"\x1b[32m{title:^30}\x1b[0m") # Darker green title
+    print("\x1b[32m" + "="*30 + "\x1b[0m") # Darker green title border
     print("\n\n")
-    print(f"{subtitle:^30}")
+    print(f"\x1b[32m{subtitle:^30}\x1b[0m") # Darker green subtitle
     print("\n\n")
     sys.stdout.flush()
 
@@ -95,13 +106,27 @@ class GameState(Enum):
     GAME_OVER = 5
 
 TETROMINOS = {
-    'I': [['  ', '[]', '  ', '  '], ['  ', '[]', '  ', '  '], ['  ', '[]', '  ', '  '], ['  ', '[]', '  ', '  ']],
-    'O': [['[]', '[]'], ['[]', '[]']],
-    'T': [['  ', '[]', '  '], ['[]', '[]', '[]'], ['  ', '  ', '  ']],
-    'J': [['  ', '[]', '  '], ['  ', '[]', '  '], ['[]', '[]', '  ']],
-    'L': [['  ', '[]', '  '], ['  ', '[]', '  '], ['  ', '[]', '[]']],
-    'S': [['  ', '[]', '[]'], ['[]', '[]', '  '], ['  ', '  ', '  ']],
-    'Z': [['[]', '[]', '  '], ['  ', '[]', '[]'], ['  ', '  ', '  ']]
+    'I': [['  ', '\x1b[32m[]\x1b[0m', '  ', '  '],
+          ['  ', '\x1b[32m[]\x1b[0m', '  ', '  '],
+          ['  ', '\x1b[32m[]\x1b[0m', '  ', '  '],
+          ['  ', '\x1b[32m[]\x1b[0m', '  ', '  ']],
+    'O': [['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'],
+          ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m']],
+    'T': [['  ', '\x1b[32m[]\x1b[0m', '  '],
+          ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'],
+          ['  ', '  ', '  ']],
+    'J': [['  ', '\x1b[32m[]\x1b[0m', '  '],
+          ['  ', '\x1b[32m[]\x1b[0m', '  '],
+          ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '  ']],
+    'L': [['  ', '\x1b[32m[]\x1b[0m', '  '],
+          ['  ', '\x1b[32m[]\x1b[0m', '  '],
+          ['  ', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m']],
+    'S': [['  ', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'],
+          ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '  '],
+          ['  ', '  ', '  ']],
+    'Z': [['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '  '],
+          ['  ', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'],
+          ['  ', '  ', '  ']]
 }
 
 BOARD_WIDTH = 10
@@ -130,7 +155,7 @@ def run_next_stage_screen(level):
 
 def run_game_over_screen(nbi, score):
     draw_text_screen("GAME OVER", f"최종 점수: {score}")
-    print(f"{'다시 시작: Enter / 종료: Q':^30}")
+    print(f"\x1b[32m{'다시 시작: Enter / 종료: Q':^30}\x1b[0m") # Darker Green instruction
     while True:
         char = nbi.get_char()
         if char == '\r' or char == '\n':
@@ -216,10 +241,10 @@ def run_game(nbi, level, score, total_lines_cleared):
         preview_keys = block_queue[:3]
         preview_lines = format_preview(preview_keys)
 
-        screen_buffer = [f"--- LEVEL: {level} | SCORE: {score} ---"]
+        screen_buffer = [f"\x1b[32m--- LEVEL: {level} | SCORE: {score} ---\x1b[0m"]
         for board_line, preview_line in zip_longest(board_lines, preview_lines, fillvalue=""):
             screen_buffer.append(f"{board_line}  {preview_line}")
-        screen_buffer.append(f"\n조작: a, d, w, s, 스페이스바 | 종료: q")
+        screen_buffer.append(f"\n\x1b[32m조작: a, d, w, s, 스페이스바 | 종료: q\x1b[0m")
         full_screen_string = "\n".join(screen_buffer)
 
         print(f"\x1b[H\x1b[2J{full_screen_string}", end="")
