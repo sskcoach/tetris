@@ -9,38 +9,72 @@ import termios
 import select
 from itertools import zip_longest
 from enum import Enum
+import numpy as np
+import pyaudio
 
-# --- 유틸리티 및 헬퍼 함수 (정의 순서 문제 해결을 위해 최상단으로 이동) ---
+# --- 사운드 합성 (PyAudio + NumPy) ---
+p = pyaudio.PyAudio()
+VOLUME = 0.2
+SAMPLING_RATE = 44100
 
+def generate_and_play_tone(frequency, duration):
+    try:
+        samples = (np.sin(2 * np.pi * np.arange(int(SAMPLING_RATE * duration)) * frequency / SAMPLING_RATE)).astype(np.float32)
+        stream = p.open(format=pyaudio.paFloat32, channels=1, rate=SAMPLING_RATE, output=True)
+        stream.write(VOLUME * samples)
+        stream.stop_stream()
+        stream.close()
+    except Exception:
+        # 오디오 장치 문제 등으로 오류 발생 시 조용히 실패
+        pass
+
+def play_move_sound():
+    generate_and_play_tone(1200, 0.03)
+
+def play_hard_drop_sound():
+    generate_and_play_tone(200, 0.1)
+
+def play_line_clear_sound():
+    generate_and_play_tone(600, 0.08)
+    generate_and_play_tone(800, 0.08)
+    generate_and_play_tone(1000, 0.08)
+
+def play_game_start_sound():
+    generate_and_play_tone(523, 0.1)
+    generate_and_play_tone(784, 0.1)
+
+def play_game_over_sound():
+    generate_and_play_tone(400, 0.2)
+    generate_and_play_tone(200, 0.3)
+
+
+# --- 유틸리티 및 헬퍼 함수 ---
 def rotate_clockwise(block):
     return [list(row[::-1]) for row in zip(*block)]
 
 def create_empty_board(width, height):
-    return [['\x1b[32m .\x1b[0m' for _ in range(width)] for _ in range(height)] # Green dots for empty cells
+    return [['\x1b[32m .\x1b[0m' for _ in range(width)] for _ in range(height)]
 
 def format_board(board):
-    lines = ["\x1b[32m◀\x1b[0m" + "".join(row) + "\x1b[32m▶\x1b[0m" for row in board] # Darker green walls
-    lines.append("\x1b[32m" + "=" * (BOARD_WIDTH * 2 + 2) + "\x1b[0m") # Darker green top border
-    lines.append("\x1b[32m" + "VV" * ((BOARD_WIDTH * 2 + 2) // 2) + "\x1b[0m") # Darker green bottom border
+    lines = ["\x1b[32m◀\x1b[0m" + "".join(row) + "\x1b[32m▶\x1b[0m" for row in board]
+    lines.append("\x1b[32m" + "=" * (BOARD_WIDTH * 2 + 2) + "\x1b[0m")
+    lines.append("\x1b[32m" + "VV" * ((BOARD_WIDTH * 2 + 2) // 2) + "\x1b[0m")
     return lines
 
 def format_preview(preview_keys):
     lines = ["\x1b[32m  다음 블록\x1b[0m"]
     lines.append("\x1b[32m " + "-"*10 + "\x1b[0m")
-    if not preview_keys:
-        return lines
+    if not preview_keys: return lines
     for key in preview_keys:
         shape = TETROMINOS[key]
-        canvas = [['\x1b[32m .\x1b[0m' for _ in range(4)] for _ in range(4)] # Green dots for preview canvas
+        canvas = [['\x1b[32m .\x1b[0m' for _ in range(4)] for _ in range(4)]
         shape_h, shape_w = len(shape), len(shape[0])
         start_y, start_x = (4 - shape_h) // 2, (4 - shape_w) // 2
         for r in range(shape_h):
             for c in range(shape_w):
-                # TETROMINOS 정의에서 이미 색상이 적용되어 있으므로 여기서는 추가하지 않음
                 canvas[start_y + r][start_x + c] = shape[r][c]
-
         for row in canvas:
-            lines.append("  " + "".join(row)) # Preview lines themselves are already green because of TETROMINOS
+            lines.append("  " + "".join(row))
         lines.append("\x1b[32m " + "-"*10 + "\x1b[0m")
     return lines
 
@@ -53,47 +87,36 @@ def place_block(board, block_shape, position):
     pos_x, pos_y = position
     for r, row_data in enumerate(block_shape):
         for c, cell_data in enumerate(row_data):
-            if cell_data == '\x1b[32m[]\x1b[0m': # Changed to match colored block
+            if cell_data == '\x1b[32m[]\x1b[0m':
                 if 0 <= pos_y + r < len(board) and 0 <= pos_x + c < len(board[0]):
-                    board[pos_y + r][pos_x + c] = '\x1b[32m[]\x1b[0m' # Changed to match colored block
+                    board[pos_y + r][pos_x + c] = '\x1b[32m[]\x1b[0m'
     return board
 
 def check_collision(board, block_shape, position):
     pos_x, pos_y = position
     for r, row_data in enumerate(block_shape):
         for c, cell_data in enumerate(row_data):
-            if cell_data == '\x1b[32m[]\x1b[0m': # Changed to match colored block
+            if cell_data == '\x1b[32m[]\x1b[0m':
                 if not (0 <= pos_x + c < BOARD_WIDTH): return True
                 if not (pos_y + r < BOARD_HEIGHT): return True
-                # Collision with other blocks (check for green block or non-empty cell)
-                # An empty cell is ' .'
-                if 0 <= pos_y + r < BOARD_HEIGHT and board[pos_y + r][pos_x + c] != '\x1b[32m .\x1b[0m': return True # Check against green dot
+                if 0 <= pos_y + r < BOARD_HEIGHT and board[pos_y + r][pos_x + c] != '\x1b[32m .\x1b[0m': return True
     return False
 
 def clear_lines(board):
-    new_board = []
-    lines_cleared = 0
-    # Check for green block, not just '[]'
-    for row in board:
-        if all(cell == '\x1b[32m[]\x1b[0m' for cell in row):
-            lines_cleared += 1
-        else:
-            new_board.append(row)
-    
+    new_board = [row for row in board if not all(cell == '\x1b[32m[]\x1b[0m' for cell in row)]
+    lines_cleared = BOARD_HEIGHT - len(new_board)
     for _ in range(lines_cleared):
-        new_board.insert(0, ['\x1b[32m .\x1b[0m' for _ in range(BOARD_WIDTH)]) # Green dots for new empty lines
-        
+        new_board.insert(0, ['\x1b[32m .\x1b[0m' for _ in range(BOARD_WIDTH)])
     return new_board, lines_cleared
 
 def draw_text_screen(title, subtitle):
-    # This function is used to draw simple text screens like splash, title, game over
-    print(f"\x1b[H\x1b[2J", end="") # 화면 지우기
+    print(f"\x1b[H\x1b[2J", end="")
     print("\n\n\n\n")
-    print("\x1b[32m" + "="*30 + "\x1b[0m") # Darker green title border
-    print(f"\x1b[32m{title:^30}\x1b[0m") # Darker green title
-    print("\x1b[32m" + "="*30 + "\x1b[0m") # Darker green title border
+    print("\x1b[32m" + "="*30 + "\x1b[0m")
+    print(f"\x1b[32m{title:^30}\x1b[0m")
+    print("\x1b[32m" + "="*30 + "\x1b[0m")
     print("\n\n")
-    print(f"\x1b[32m{subtitle:^30}\x1b[0m") # Darker green subtitle
+    print(f"\x1b[32m{subtitle:^30}\x1b[0m")
     print("\n\n")
     sys.stdout.flush()
 
@@ -106,27 +129,13 @@ class GameState(Enum):
     GAME_OVER = 5
 
 TETROMINOS = {
-    'I': [['  ', '\x1b[32m[]\x1b[0m', '  ', '  '],
-          ['  ', '\x1b[32m[]\x1b[0m', '  ', '  '],
-          ['  ', '\x1b[32m[]\x1b[0m', '  ', '  '],
-          ['  ', '\x1b[32m[]\x1b[0m', '  ', '  ']],
-    'O': [['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'],
-          ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m']],
-    'T': [['  ', '\x1b[32m[]\x1b[0m', '  '],
-          ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'],
-          ['  ', '  ', '  ']],
-    'J': [['  ', '\x1b[32m[]\x1b[0m', '  '],
-          ['  ', '\x1b[32m[]\x1b[0m', '  '],
-          ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '  ']],
-    'L': [['  ', '\x1b[32m[]\x1b[0m', '  '],
-          ['  ', '\x1b[32m[]\x1b[0m', '  '],
-          ['  ', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m']],
-    'S': [['  ', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'],
-          ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '  '],
-          ['  ', '  ', '  ']],
-    'Z': [['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '  '],
-          ['  ', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'],
-          ['  ', '  ', '  ']]
+    'I': [['  ', '\x1b[32m[]\x1b[0m', '  ', '  '], ['  ', '\x1b[32m[]\x1b[0m', '  ', '  '], ['  ', '\x1b[32m[]\x1b[0m', '  ', '  '], ['  ', '\x1b[32m[]\x1b[0m', '  ', '  ']],
+    'O': [['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'], ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m']],
+    'T': [['  ', '\x1b[32m[]\x1b[0m', '  '], ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'], ['  ', '  ', '  ']],
+    'J': [['  ', '\x1b[32m[]\x1b[0m', '  '], ['  ', '\x1b[32m[]\x1b[0m', '  '], ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '  ']],
+    'L': [['  ', '\x1b[32m[]\x1b[0m', '  '], ['  ', '\x1b[32m[]\x1b[0m', '  '], ['  ', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m']],
+    'S': [['  ', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'], ['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '  '], ['  ', '  ', '  ']],
+    'Z': [['\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m', '  '], ['  ', '\x1b[32m[]\x1b[0m', '\x1b[32m[]\x1b[0m'], ['  ', '  ', '  ']]
 }
 
 BOARD_WIDTH = 10
@@ -134,7 +143,6 @@ BOARD_HEIGHT = 20
 LEVEL_UP_LINES = 10
 
 # --- 각 SCENE 별 함수 ---
-
 def run_splash_screen():
     draw_text_screen("TETRIS", "Made by Gemini")
     time.sleep(2)
@@ -144,27 +152,32 @@ def run_title_screen(nbi):
     draw_text_screen("T E T R I S", "시작하려면 Enter를 누르세요")
     while True:
         char = nbi.get_char()
-        if char == '\r' or char == '\n': # Enter key
+        if char == '\r' or char == '\n':
+            play_game_start_sound()
             return GameState.GAME
         time.sleep(0.1)
 
 def run_next_stage_screen(level):
+    play_line_clear_sound()
     draw_text_screen(f"LEVEL {level-1} CLEAR!", f"잠시 후 LEVEL {level}을(를) 시작합니다.")
     time.sleep(3)
     return GameState.GAME
 
 def run_game_over_screen(nbi, score):
+    play_game_over_sound()
     draw_text_screen("GAME OVER", f"최종 점수: {score}")
-    print(f"\x1b[32m{'다시 시작: Enter / 종료: Q':^30}\x1b[0m") # Darker Green instruction
+    print(f"\x1b[32m{'다시 시작: Enter / 종료: Q':^30}\x1b[0m")
     while True:
         char = nbi.get_char()
         if char == '\r' or char == '\n':
+            play_move_sound()
             return GameState.TITLE
         elif char == 'q':
-            return None # Exit game
+            return None
         time.sleep(0.1)
 
 def run_game(nbi, level, score, total_lines_cleared):
+    # ... (rest of the run_game function is the same) 
     board = create_empty_board(BOARD_WIDTH, BOARD_HEIGHT)
     block_keys = list(TETROMINOS.keys())
     block_queue = []
@@ -176,11 +189,13 @@ def run_game(nbi, level, score, total_lines_cleared):
     block_position = [3, 0]
     
     gravity_timer = 0
-    gravity_speed = max(1, 5 - level) # 레벨에 따라 속도 증가
+    gravity_speed = max(1, 5 - level)
 
     def handle_block_landing_in_game(board, shape, pos, queue, keys):
         board = place_block(board, shape, pos)
         board, lines_cleared = clear_lines(board)
+        if lines_cleared > 0:
+            play_line_clear_sound()
         
         if len(queue) < 4:
             replenish_queue(queue, keys)
@@ -196,19 +211,36 @@ def run_game(nbi, level, score, total_lines_cleared):
         gravity_timer += 1
         char = nbi.get_char()
 
+        moved = False
         if char == 'a':
             block_position[0] -= 1
-            if check_collision(board, current_block_shape, block_position): block_position[0] += 1
+            if check_collision(board, current_block_shape, block_position):
+                block_position[0] += 1
+            else:
+                moved = True
         elif char == 'd':
             block_position[0] += 1
-            if check_collision(board, current_block_shape, block_position): block_position[0] -= 1
+            if check_collision(board, current_block_shape, block_position):
+                block_position[0] -= 1
+            else:
+                moved = True
         elif char == 'w':
             rotated = rotate_clockwise(current_block_shape)
-            if not check_collision(board, rotated, block_position): current_block_shape = rotated
+            if not check_collision(board, rotated, block_position):
+                current_block_shape = rotated
+                moved = True
         elif char == 's':
             block_position[1] += 1
-            if check_collision(board, current_block_shape, block_position): block_position[1] -= 1
-        elif char == ' ':
+            if check_collision(board, current_block_shape, block_position):
+                block_position[1] -= 1
+            else:
+                moved = True
+        
+        if moved:
+            play_move_sound()
+
+        if char == ' ':
+            play_hard_drop_sound()
             while not check_collision(board, current_block_shape, block_position):
                 block_position[1] += 1
             block_position[1] -= 1
@@ -233,7 +265,6 @@ def run_game(nbi, level, score, total_lines_cleared):
         if total_lines_cleared >= level * LEVEL_UP_LINES:
             return GameState.NEXT_STAGE, score, total_lines_cleared
         
-        # --- 렌더링 ---
         temp_board = [row[:] for row in board]
         temp_board = place_block(temp_board, current_block_shape, block_position)
         
@@ -251,6 +282,7 @@ def run_game(nbi, level, score, total_lines_cleared):
         sys.stdout.flush()
         
         time.sleep(0.1)
+
 
 # --- NonBlockingInput 클래스 ---
 class NonBlockingInput:
@@ -293,5 +325,6 @@ if __name__ == "__main__":
                     current_state = run_game_over_screen(nbi, score)
     finally:
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        p.terminate() # PyAudio 리소스 해제
 
     print("게임을 종료합니다.")
