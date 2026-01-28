@@ -188,21 +188,34 @@ def _generate_chord_wav(freqs, duration_sec, sample_rate=22050, volume=0.7):
     return wav
 
 
-def _generate_full_track_wav(melody, bass, tempo, sample_rate=22050, volume=0.7):
+def _generate_full_track_wav(melody, bass, tempo, sample_rate=22050, volume=0.7, repeats=1):
     """Generate complete track with melody and bass pre-mixed into single WAV
 
     This avoids note-by-note playback gaps by rendering everything upfront.
+
+    Args:
+        melody: List of (note, duration) tuples
+        bass: List of (note, duration) tuples for bass line
+        tempo: BPM
+        sample_rate: Audio sample rate
+        volume: Volume level (0-1)
+        repeats: Number of times to repeat the melody (for seamless looping)
     """
     beat_to_sec = lambda beats: (60.0 / tempo) * beats
 
+    # Repeat melody for seamless looping
+    full_melody = melody * repeats
+
     # Calculate total duration
-    melody_duration = sum(beat_to_sec(d) for _, d in melody)
+    melody_duration = sum(beat_to_sec(d) for _, d in full_melody)
     total_samples = int(sample_rate * melody_duration)
 
     # Extend bass to match melody length
     if bass:
         bass_duration = sum(beat_to_sec(d) for _, d in bass)
-        bass = bass * (int(melody_duration / bass_duration) + 1)
+        full_bass = bass * (int(melody_duration / bass_duration) + 1)
+    else:
+        full_bass = None
 
     # Pre-allocate sample buffer
     samples = [0.0] * total_samples
@@ -210,7 +223,7 @@ def _generate_full_track_wav(melody, bass, tempo, sample_rate=22050, volume=0.7)
     # Render melody track
     melody_amp = 12000 * volume
     current_sample = 0
-    for note, duration in melody:
+    for note, duration in full_melody:
         freq = NOTES.get(note, 0)
         dur_sec = beat_to_sec(duration)
         n_samples = int(sample_rate * dur_sec)
@@ -233,10 +246,10 @@ def _generate_full_track_wav(melody, bass, tempo, sample_rate=22050, volume=0.7)
         current_sample += n_samples
 
     # Render bass track
-    if bass:
+    if full_bass:
         bass_amp = 10000 * volume
         current_sample = 0
-        for note, duration in bass:
+        for note, duration in full_bass:
             if current_sample >= total_samples:
                 break
             freq = NOTES.get(note, 0)
@@ -725,11 +738,57 @@ if __name__ == '__main__':
             mode = "full theme" if args.full else "main melody"
             bass_mode = " + bass" if args.bass else ""
             print(f"Playing {mode}{bass_mode} on loop at {args.tempo} BPM... (press 'q' to stop)")
-            while True:
-                completed = play_once(tempo=args.tempo, full=args.full, with_bass=args.bass)
-                if not completed:
-                    break
-            completed = False
+
+            if args.bass:
+                # Pre-render multiple repeats for seamless looping
+                melody = TETRIS_THEME if args.full else TETRIS_SIMPLE
+                print("Generating seamless loop...", end=" ", flush=True)
+                # Generate 5 repeats at a time for smooth playback
+                wav_data, single_duration = _generate_full_track_wav(
+                    melody, BASS_LINE, args.tempo, repeats=5
+                )
+                total_duration = single_duration * 5
+                print("Done!")
+
+                temp_file = '/tmp/tetris_loop.wav'
+                with open(temp_file, 'wb') as f:
+                    f.write(wav_data)
+
+                keyboard = KeyboardInput()
+                keyboard.start()
+                try:
+                    while True:
+                        # Play the pre-rendered track
+                        os.system(f'afplay "{temp_file}" 2>/dev/null &')
+
+                        # Wait with key checking
+                        start_time = time.time()
+                        while time.time() - start_time < total_duration - 0.1:
+                            key = keyboard.check_key()
+                            if key and key.lower() == 'q':
+                                os.system('pkill -9 afplay 2>/dev/null')
+                                completed = False
+                                break
+                            time.sleep(0.05)
+                        else:
+                            continue
+                        break
+                finally:
+                    keyboard.stop()
+                    os.system('pkill -9 afplay 2>/dev/null')
+                    if os.path.exists(temp_file):
+                        try:
+                            os.remove(temp_file)
+                        except OSError:
+                            pass
+                completed = False
+            else:
+                # Single track loop (note by note)
+                while True:
+                    completed = play_once(tempo=args.tempo, full=args.full, with_bass=False)
+                    if not completed:
+                        break
+                completed = False
         else:
             mode = "full theme" if args.full else "main melody"
             bass_mode = " + bass" if args.bass else ""
