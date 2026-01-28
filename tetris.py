@@ -98,23 +98,6 @@ BOTTOM_BORDER_BOTTOM = r"\/"
 EMPTY_CELL = " ."
 BLOCK_CHAR = "[]"
 
-# Color pairs for GREEN monitor style
-COLOR_NORMAL = 1      # Normal green text
-COLOR_BRIGHT = 2      # Bright green (blocks, important)
-COLOR_DIM = 3         # Dim green (borders, background)
-COLOR_TITLE = 4       # Title text
-
-
-def init_colors():
-    """Initialize GREEN monitor color scheme"""
-    curses.start_color()
-    curses.use_default_colors()
-
-    # Define green shades
-    curses.init_pair(COLOR_NORMAL, curses.COLOR_GREEN, -1)
-    curses.init_pair(COLOR_BRIGHT, curses.COLOR_GREEN, -1)  # Will use A_BOLD
-    curses.init_pair(COLOR_DIM, curses.COLOR_GREEN, -1)     # Will use A_DIM
-    curses.init_pair(COLOR_TITLE, curses.COLOR_GREEN, -1)
 
 # Tetromino shapes in their bounding boxes for rotation
 TETROMINOES = {
@@ -161,54 +144,41 @@ def clear_lines(board):
     return lines_cleared
 
 def draw_text(stdscr, y, x, text, bright=False):
-    if bright:
-        stdscr.addstr(y, x, text, curses.color_pair(COLOR_BRIGHT) | curses.A_BOLD)
-    else:
-        stdscr.addstr(y, x, text, curses.color_pair(COLOR_NORMAL))
+    stdscr.addstr(y, x, text)
 
 def draw_playfield(stdscr, board, board_offset_y, board_offset_x):
-    dim_color = curses.color_pair(COLOR_DIM) | curses.A_DIM
-    bright_color = curses.color_pair(COLOR_BRIGHT) | curses.A_BOLD
-
     for y in range(BOARD_HEIGHT):
-        stdscr.addstr(board_offset_y + y, board_offset_x, BORDER_LEFT, dim_color)
+        stdscr.addstr(board_offset_y + y, board_offset_x, BORDER_LEFT)
         for x in range(BOARD_WIDTH):
-            if board[y][x] != 0:
-                stdscr.addstr(board_offset_y + y, board_offset_x + 2 + x * 2, BLOCK_CHAR, bright_color)
-            else:
-                stdscr.addstr(board_offset_y + y, board_offset_x + 2 + x * 2, EMPTY_CELL, dim_color)
-        stdscr.addstr(board_offset_y + y, board_offset_x + 2 + BOARD_WIDTH * 2, BORDER_RIGHT, dim_color)
+            cell_char = BLOCK_CHAR if board[y][x] != 0 else EMPTY_CELL
+            stdscr.addstr(board_offset_y + y, board_offset_x + 2 + x * 2, cell_char)
+        stdscr.addstr(board_offset_y + y, board_offset_x + 2 + BOARD_WIDTH * 2, BORDER_RIGHT)
     bottom_y = board_offset_y + BOARD_HEIGHT
-    stdscr.addstr(bottom_y, board_offset_x, "  " + BOTTOM_BORDER_TOP * BOARD_WIDTH + "  ", dim_color)
-    stdscr.addstr(bottom_y + 1, board_offset_x, "  " + BOTTOM_BORDER_BOTTOM * BOARD_WIDTH + "  ", dim_color)
+    stdscr.addstr(bottom_y, board_offset_x, "  " + BOTTOM_BORDER_TOP * BOARD_WIDTH + "  ")
+    stdscr.addstr(bottom_y + 1, board_offset_x, "  " + BOTTOM_BORDER_BOTTOM * BOARD_WIDTH + "  ")
 
 def draw_tetromino(stdscr, shape, piece_y, piece_x, board_offset_y, board_offset_x):
     screen_y = board_offset_y + piece_y
     screen_x = board_offset_x + 2 + piece_x * 2
-    bright_color = curses.color_pair(COLOR_BRIGHT) | curses.A_BOLD
     for y, row in enumerate(shape):
         for x, cell in enumerate(row):
             if cell:
-                stdscr.addstr(screen_y + y, screen_x + x * 2, BLOCK_CHAR, bright_color)
+                stdscr.addstr(screen_y + y, screen_x + x * 2, BLOCK_CHAR)
 
 def draw_preview_box(stdscr, next_piece_shape, board_offset_y, board_offset_x):
     preview_box_h, preview_box_w = 6, 12
     preview_offset_y = board_offset_y
     preview_offset_x = board_offset_x + (BOARD_WIDTH * 2) + 6
-    dim_color = curses.color_pair(COLOR_DIM) | curses.A_DIM
-    bright_color = curses.color_pair(COLOR_BRIGHT) | curses.A_BOLD
-    normal_color = curses.color_pair(COLOR_NORMAL)
-
-    stdscr.addstr(preview_offset_y, preview_offset_x, "NEXT", normal_color)
+    stdscr.addstr(preview_offset_y, preview_offset_x, "NEXT")
     for y in range(preview_box_h):
-        stdscr.addstr(preview_offset_y + 1 + y, preview_offset_x - 1, "|            |", dim_color)
+        stdscr.addstr(preview_offset_y + 1 + y, preview_offset_x - 1, "|            |")
     piece_h, piece_w = len(next_piece_shape), len(next_piece_shape[0])
     piece_draw_y = preview_offset_y + 1 + (preview_box_h - piece_h) // 2
     piece_draw_x = preview_offset_x + (preview_box_w - piece_w * 2) // 2
     for y, row in enumerate(next_piece_shape):
         for x, cell in enumerate(row):
             if cell:
-                stdscr.addstr(piece_draw_y + y, piece_draw_x + x * 2, BLOCK_CHAR, bright_color)
+                stdscr.addstr(piece_draw_y + y, piece_draw_x + x * 2, BLOCK_CHAR)
 
 # --- Scene Functions ---
 
@@ -238,13 +208,11 @@ def run_menu_scene(stdscr):
         for i, item in enumerate(menu_items):
             start_x = (term_w - len(item)) // 2
             if i == current_selection:
-                # Selected: bright green with reverse
-                stdscr.addstr(term_h // 2 + i, start_x, f"> {item} <",
-                             curses.color_pair(COLOR_BRIGHT) | curses.A_BOLD)
+                stdscr.attron(curses.A_REVERSE)
+                draw_text(stdscr, term_h // 2 + i, start_x, item)
+                stdscr.attroff(curses.A_REVERSE)
             else:
-                # Not selected: dim green
-                stdscr.addstr(term_h // 2 + i, start_x, f"  {item}  ",
-                             curses.color_pair(COLOR_DIM))
+                draw_text(stdscr, term_h // 2 + i, start_x, item)
 
         stdscr.move(term_h - 1, term_w - 1)
         key = stdscr.getch()
@@ -378,8 +346,7 @@ def run_game_scene(stdscr):
             lines_to_next_level = lines_per_level # Start at 10 lines to next level
 
         info_text = f"Score: {score}  |  Level: {level}  |  Lines: {lines_to_next_level}"
-        stdscr.addstr(board_offset_y - 2, board_offset_x, info_text,
-                     curses.color_pair(COLOR_NORMAL))
+        stdscr.addstr(board_offset_y - 2, board_offset_x, info_text)
         draw_playfield(stdscr, board, board_offset_y, board_offset_x)
         draw_tetromino(stdscr, current_piece_shape, current_piece_y, current_piece_x, board_offset_y, board_offset_x)
         draw_preview_box(stdscr, next_piece_shape, board_offset_y, board_offset_x)
@@ -450,9 +417,6 @@ def run_leaderboard_scene(stdscr):
 def main(stdscr):
     try: curses.curs_set(0)
     except curses.error: pass
-
-    # Initialize GREEN monitor colors
-    init_colors()
 
     current_scene = "TITLE"
     last_score = 0
