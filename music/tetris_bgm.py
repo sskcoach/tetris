@@ -716,6 +716,158 @@ def play_bridge(tempo=120, check_keys=True):
         return True
 
 
+def _visualize_note(note, freq, is_bass=False):
+    """Generate visual representation of a note"""
+    if freq == 0:
+        return "  REST  "
+
+    # Note to piano key position (C2=0 to C6=48)
+    note_order = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    try:
+        # Parse note name (e.g., "E5" -> "E", "5")
+        if '#' in note:
+            name, octave = note[:-1], int(note[-1])
+        else:
+            name, octave = note[:-1], int(note[-1])
+        pos = note_order.index(name) + (octave - 2) * 12
+    except (ValueError, IndexError):
+        pos = 24  # Default middle
+
+    # Create bar visualization (max 40 chars)
+    bar_len = min(40, max(1, pos))
+    if is_bass:
+        bar = '░' * bar_len
+        return f"{note:>4} {bar}"
+    else:
+        bar = '█' * bar_len
+        return f"{note:>4} {bar}"
+
+
+def play_with_visualization(tempo=120, full=False, with_bass=False, check_keys=True):
+    """Play with real-time note visualization (pre-rendered audio)"""
+    melody = TETRIS_THEME if full else TETRIS_SIMPLE
+    beat_to_sec = lambda beats: (60.0 / tempo) * beats
+
+    # Extend bass
+    if with_bass:
+        melody_len = sum(d for _, d in melody)
+        bass_len = sum(d for _, d in BASS_LINE)
+        bass = BASS_LINE * (int(melody_len / bass_len) + 1)
+    else:
+        bass = None
+
+    # Pre-render entire track
+    print("Generating audio...", end=" ", flush=True)
+    wav_data, total_duration = _generate_full_track_wav(
+        melody, BASS_LINE if with_bass else None, tempo
+    )
+    print("Done!")
+
+    temp_file = '/tmp/tetris_visual.wav'
+    with open(temp_file, 'wb') as f:
+        f.write(wav_data)
+
+    keyboard = None
+    if check_keys:
+        keyboard = KeyboardInput()
+        try:
+            keyboard.start()
+        except Exception:
+            keyboard = None
+
+    # Header
+    print("\033[2J\033[H")  # Clear screen
+    print("╔════════════════════════════════════════════════════╗")
+    print("║  TETRIS BGM - Press 'q' to stop                    ║")
+    print("╠════════════════════════════════════════════════════╣")
+    print("║  C2        C3        C4        C5        C6        ║")
+    print("║  │         │         │         │         │         ║")
+    print("╚════════════════════════════════════════════════════╝")
+
+    try:
+        # Start audio playback
+        os.system(f'afplay "{temp_file}" 2>/dev/null &')
+
+        start_time = time.time()
+        melody_idx = 0
+        bass_idx = 0
+        melody_time = 0
+        bass_time = 0
+
+        while melody_idx < len(melody):
+            elapsed = time.time() - start_time
+
+            # Check for quit
+            if keyboard:
+                key = keyboard.check_key()
+                if key and key.lower() == 'q':
+                    os.system('pkill -9 afplay 2>/dev/null')
+                    return False
+
+            # Get current notes based on time
+            m_note, m_dur = melody[melody_idx]
+            m_freq = NOTES.get(m_note, 0)
+            m_dur_sec = beat_to_sec(m_dur)
+
+            if bass and bass_idx < len(bass):
+                b_note, b_dur = bass[bass_idx]
+                b_freq = NOTES.get(b_note, 0)
+                b_dur_sec = beat_to_sec(b_dur)
+            else:
+                b_note, b_freq = 'REST', 0
+
+            # Visualize current notes
+            print(f"\033[8;1H")  # Move cursor
+            print(f"  Melody: {_visualize_note(m_note, m_freq, False):50}")
+            if with_bass:
+                print(f"  Bass:   {_visualize_note(b_note, b_freq, True):50}")
+            else:
+                print(f"{'':60}")
+
+            # Progress bar
+            progress = min(40, int((elapsed / total_duration) * 40))
+            pct = min(100, int((elapsed / total_duration) * 100))
+            print(f"\n  Progress: [{'▓' * progress}{'░' * (40 - progress)}] {pct:3}%")
+
+            # Wait until next note
+            next_melody_time = melody_time + m_dur_sec
+            next_bass_time = bass_time + beat_to_sec(bass[bass_idx][1]) if bass and bass_idx < len(bass) else float('inf')
+
+            while time.time() - start_time < min(next_melody_time, next_bass_time):
+                if keyboard:
+                    key = keyboard.check_key()
+                    if key and key.lower() == 'q':
+                        os.system('pkill -9 afplay 2>/dev/null')
+                        return False
+                time.sleep(0.02)
+
+            # Advance indices
+            if time.time() - start_time >= next_melody_time:
+                melody_time = next_melody_time
+                melody_idx += 1
+            if bass and time.time() - start_time >= next_bass_time:
+                bass_time = next_bass_time
+                bass_idx += 1
+
+        # Wait for audio to finish
+        remaining = total_duration - (time.time() - start_time)
+        if remaining > 0:
+            time.sleep(remaining)
+
+        return True
+
+    finally:
+        if keyboard:
+            keyboard.stop()
+        os.system('pkill -9 afplay 2>/dev/null')
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except OSError:
+                pass
+        print("\033[15;1H\n")
+
+
 if __name__ == '__main__':
     print("Tetris Theme A (Korobeiniki) - PC Beep Version")
     print("Based on: github.com/lambdaloop/NXT_tunes/tree/master/tetris")
@@ -728,12 +880,25 @@ if __name__ == '__main__':
     parser.add_argument('--bridge', action='store_true', help='Play bridge section only')
     parser.add_argument('--bass', action='store_true', help='Play with bass line (2 tracks)')
     parser.add_argument('--loop', action='store_true', help='Loop until stopped')
+    parser.add_argument('--visual', action='store_true', help='Show note visualization')
     args = parser.parse_args()
 
     try:
         if args.bridge:
             print("Playing bridge section...")
             completed = play_bridge(tempo=args.tempo)
+        elif args.visual:
+            # Visualization mode (priority over loop)
+            mode = "full theme" if args.full else "main melody"
+            bass_mode = " + bass" if args.bass else ""
+            loop_mode = " (loop)" if args.loop else ""
+            print(f"Playing {mode}{bass_mode}{loop_mode} with visualization...")
+            while True:
+                completed = play_with_visualization(
+                    tempo=args.tempo, full=args.full, with_bass=args.bass
+                )
+                if not completed or not args.loop:
+                    break
         elif args.loop:
             mode = "full theme" if args.full else "main melody"
             bass_mode = " + bass" if args.bass else ""
