@@ -56,21 +56,40 @@ THEME_A_BRIDGE = [
     ('C4', 1), ('E4', 1), ('A4', 2), ('G#4', 4),
 ]
 
-# Bass line (accompaniment)
-BASS_LINE = [
-    # E minor pattern
-    ('E2', 0.5), ('E3', 0.5), ('E2', 0.5), ('E3', 0.5),
-    ('E2', 0.5), ('E3', 0.5), ('E2', 0.5), ('E3', 0.5),
-    # A minor pattern
-    ('A2', 0.5), ('A3', 0.5), ('A2', 0.5), ('A3', 0.5),
-    ('A2', 0.5), ('A3', 0.5), ('A2', 0.5), ('A3', 0.5),
-    # G# diminished
-    ('G#2', 0.5), ('G#3', 0.5), ('G#2', 0.5), ('G#3', 0.5),
-    ('G#2', 0.5), ('G#3', 0.5), ('G#2', 0.5), ('G#3', 0.5),
-    # B pattern
-    ('B2', 0.5), ('B3', 0.5), ('B2', 0.5), ('B3', 0.5),
-    ('B2', 0.5), ('B3', 0.5), ('B2', 0.5), ('B3', 0.5),
+# Bass line (accompaniment) - accurate from NXT_tunes
+# Pattern matches melody sections
+BASS_LINE_A = [
+    # Measure 1-2: E pattern (4 beats)
+    ('E2', 0.5), ('E2', 0.5), ('E2', 0.5), ('E2', 0.5),
+    ('E2', 0.5), ('E2', 0.5), ('E2', 0.5), ('E2', 0.5),
+    # Measure 3-4: A pattern (4 beats)
+    ('A2', 0.5), ('A2', 0.5), ('A2', 0.5), ('A2', 0.5),
+    ('A2', 0.5), ('A2', 0.5), ('A2', 0.5), ('A2', 0.5),
+    # Measure 5-6: G# pattern (4 beats)
+    ('G#2', 0.5), ('G#2', 0.5), ('G#2', 0.5), ('G#2', 0.5),
+    ('G#2', 0.5), ('G#2', 0.5), ('G#2', 0.5), ('G#2', 0.5),
+    # Measure 7-8: A -> B pattern (4 beats)
+    ('A2', 0.5), ('A2', 0.5), ('A2', 0.5), ('B2', 0.5),
+    ('A2', 0.5), ('A2', 0.5), ('A2', 1),
 ]
+
+BASS_LINE_B = [
+    # Measure 1-2: D -> A -> F (4 beats)
+    ('D2', 0.5), ('D2', 0.5), ('D2', 0.5), ('A2', 0.5),
+    ('F2', 0.5), ('F2', 0.5), ('F2', 0.5), ('F2', 0.5),
+    # Measure 3-4: C -> G (4 beats)
+    ('C2', 0.5), ('C2', 0.5), ('G2', 0.5), ('G2', 0.5),
+    ('G2', 0.5), ('G2', 0.5), ('G2', 0.5), ('G2', 0.5),
+    # Measure 5-6: B pattern (4 beats)
+    ('B2', 0.5), ('B2', 0.5), ('B2', 0.5), ('B2', 0.5),
+    ('B2', 0.5), ('B2', 0.5), ('B2', 0.5), ('B2', 0.5),
+    # Measure 7-8: A pattern (4 beats)
+    ('A2', 0.5), ('A2', 0.5), ('A2', 0.5), ('A2', 0.5),
+    ('A2', 0.5), ('A2', 0.5), ('A2', 1),
+]
+
+# Combined bass for full melody
+BASS_LINE = BASS_LINE_A + BASS_LINE_B
 
 # Full Tetris Theme (melody + bridge, then repeat)
 TETRIS_THEME = THEME_A_MELODY + THEME_A_MELODY + THEME_A_BRIDGE
@@ -105,6 +124,59 @@ def _generate_beep_wav(freq, duration_sec, sample_rate=22050, volume=0.8):
         samples.append(struct.pack('<h', max(-32768, min(32767, sample))))
 
     # Build WAV file in memory
+    data = b''.join(samples)
+    wav = b'RIFF'
+    wav += struct.pack('<I', 36 + len(data))
+    wav += b'WAVEfmt '
+    wav += struct.pack('<IHHIIHH', 16, 1, 1, sample_rate, sample_rate * 2, 2, 16)
+    wav += b'data'
+    wav += struct.pack('<I', len(data))
+    wav += data
+    return wav
+
+
+def _generate_chord_wav(freqs, duration_sec, sample_rate=22050, volume=0.7):
+    """Generate multiple frequencies mixed together as WAV bytes"""
+    n_samples = int(sample_rate * duration_sec)
+    if n_samples == 0:
+        n_samples = 1
+
+    # Filter out zero frequencies
+    freqs = [f for f in freqs if f > 0]
+    if not freqs:
+        # Generate silence
+        data = b'\x00\x00' * n_samples
+        wav = b'RIFF'
+        wav += struct.pack('<I', 36 + len(data))
+        wav += b'WAVEfmt '
+        wav += struct.pack('<IHHIIHH', 16, 1, 1, sample_rate, sample_rate * 2, 2, 16)
+        wav += b'data'
+        wav += struct.pack('<I', len(data))
+        wav += data
+        return wav
+
+    samples = []
+    # Divide amplitude by number of frequencies to prevent clipping
+    base_amplitude = int(14000 * volume / len(freqs))
+
+    for i in range(n_samples):
+        t = i / sample_rate
+        fade_samples = min(int(sample_rate * 0.008), n_samples // 4)
+        amplitude = base_amplitude
+
+        if fade_samples > 0:
+            if i < fade_samples:
+                amplitude = int(base_amplitude * (i / fade_samples))
+            elif i > n_samples - fade_samples:
+                amplitude = int(base_amplitude * ((n_samples - i) / fade_samples))
+
+        # Mix all frequencies
+        sample_val = 0
+        for freq in freqs:
+            sample_val += int(amplitude * math.sin(2 * math.pi * freq * t))
+
+        samples.append(struct.pack('<h', max(-32768, min(32767, sample_val))))
+
     data = b''.join(samples)
     wav = b'RIFF'
     wav += struct.pack('<I', 36 + len(data))
@@ -212,6 +284,30 @@ class BeepPlayer:
 
         else:
             print('\a', end='', flush=True)
+
+    def _play_chord(self, freqs, duration_sec, volume=0.7):
+        """Play multiple frequencies together (non-blocking)"""
+        freqs = [f for f in freqs if f > 0]
+        if not freqs:
+            return
+
+        if self._play_method == 'afplay':
+            wav_data = _generate_chord_wav(freqs, duration_sec, volume=volume)
+            temp_file = self._get_temp_file()
+            with open(temp_file, 'wb') as f:
+                f.write(wav_data)
+            os.system(f'afplay "{temp_file}" 2>/dev/null &')
+
+        elif self._play_method in ['aplay', 'paplay']:
+            wav_data = _generate_chord_wav(freqs, duration_sec, volume=volume)
+            temp_file = self._get_temp_file()
+            with open(temp_file, 'wb') as f:
+                f.write(wav_data)
+            os.system(f'{self._play_method} "{temp_file}" 2>/dev/null &')
+
+        else:
+            # Fallback: just play first frequency
+            self._play_note(freqs[0], duration_sec, volume)
 
     def _beat_to_sec(self, beats):
         """Convert beats to seconds based on tempo"""
@@ -347,13 +443,64 @@ def stop_bgm():
         _player.stop()
 
 
-def play_once(tempo=120, full=False, check_keys=True):
+def _merge_tracks(melody, bass, beat_to_sec_func):
+    """Merge melody and bass into time-aligned events
+
+    Returns list of (time, melody_freq, bass_freq, duration) tuples
+    """
+    events = []
+
+    # Build melody timeline
+    melody_time = 0
+    for note, duration in melody:
+        freq = NOTES.get(note, 0)
+        dur_sec = beat_to_sec_func(duration)
+        events.append(('melody', melody_time, freq, dur_sec))
+        melody_time += dur_sec
+
+    # Build bass timeline
+    bass_time = 0
+    for note, duration in bass:
+        freq = NOTES.get(note, 0)
+        dur_sec = beat_to_sec_func(duration)
+        events.append(('bass', bass_time, freq, dur_sec))
+        bass_time += dur_sec
+
+    # Sort by time
+    events.sort(key=lambda x: x[1])
+
+    # Merge overlapping events at same time
+    merged = []
+    i = 0
+    while i < len(events):
+        current_time = events[i][1]
+        melody_freq = 0
+        bass_freq = 0
+        min_duration = float('inf')
+
+        # Collect all events at this time
+        while i < len(events) and abs(events[i][1] - current_time) < 0.001:
+            track, _, freq, dur = events[i]
+            if track == 'melody':
+                melody_freq = freq
+            else:
+                bass_freq = freq
+            min_duration = min(min_duration, dur)
+            i += 1
+
+        merged.append((current_time, melody_freq, bass_freq, min_duration))
+
+    return merged
+
+
+def play_once(tempo=120, full=False, check_keys=True, with_bass=False):
     """Play theme once (blocking)
 
     Args:
         tempo: BPM (default 120)
         full: If True, play full theme. If False, play simple melody.
         check_keys: If True, check for 'q' key to stop.
+        with_bass: If True, play melody + bass together (2 tracks).
 
     Returns:
         True if completed, False if stopped by user
@@ -361,28 +508,107 @@ def play_once(tempo=120, full=False, check_keys=True):
     player = BeepPlayer(tempo=tempo)
     melody = TETRIS_THEME if full else TETRIS_SIMPLE
 
+    if not with_bass:
+        # Single track playback
+        if check_keys:
+            keyboard = KeyboardInput()
+            keyboard.start()
+            try:
+                result = player.play_once_with_keys(melody, keyboard)
+            finally:
+                keyboard.stop()
+                player._cleanup()
+            return result
+        else:
+            start_time = time.time()
+            for i, (note, duration) in enumerate(melody):
+                freq = NOTES.get(note, 0)
+                duration_sec = player._beat_to_sec(duration)
+                next_note_time = start_time + sum(player._beat_to_sec(d) for _, d in melody[:i+1])
+                player._play_note(freq, duration_sec)
+                wait_time = next_note_time - time.time()
+                if wait_time > 0:
+                    time.sleep(wait_time)
+            player._cleanup()
+            return True
+
+    # 2-track playback (melody + bass)
+    # Extend bass to match melody length
+    melody_len = sum(d for _, d in melody)
+    bass_len = sum(d for _, d in BASS_LINE)
+    bass = BASS_LINE * (int(melody_len / bass_len) + 1)
+
+    keyboard = None
     if check_keys:
         keyboard = KeyboardInput()
         keyboard.start()
-        try:
-            result = player.play_once_with_keys(melody, keyboard)
-        finally:
-            keyboard.stop()
-            player._cleanup()
-        return result
-    else:
-        # Simple playback without key checking
+
+    try:
         start_time = time.time()
-        for i, (note, duration) in enumerate(melody):
-            freq = NOTES.get(note, 0)
-            duration_sec = player._beat_to_sec(duration)
-            next_note_time = start_time + sum(player._beat_to_sec(d) for _, d in melody[:i+1])
-            player._play_note(freq, duration_sec)
-            wait_time = next_note_time - time.time()
-            if wait_time > 0:
-                time.sleep(wait_time)
-        player._cleanup()
+        melody_idx = 0
+        bass_idx = 0
+        melody_time = 0
+        bass_time = 0
+
+        while melody_idx < len(melody):
+            if keyboard:
+                key = keyboard.check_key()
+                if key and key.lower() == 'q':
+                    os.system('pkill -9 afplay 2>/dev/null')
+                    return False
+
+            # Get current melody note
+            m_note, m_dur = melody[melody_idx]
+            m_freq = NOTES.get(m_note, 0)
+            m_dur_sec = player._beat_to_sec(m_dur)
+            m_end_time = melody_time + m_dur_sec
+
+            # Get current bass note
+            if bass_idx < len(bass):
+                b_note, b_dur = bass[bass_idx]
+                b_freq = NOTES.get(b_note, 0)
+                b_dur_sec = player._beat_to_sec(b_dur)
+                b_end_time = bass_time + b_dur_sec
+            else:
+                b_freq = 0
+                b_end_time = float('inf')
+
+            # Determine duration until next event
+            next_event_time = min(m_end_time, b_end_time)
+            play_duration = next_event_time - max(melody_time, bass_time)
+
+            if play_duration > 0.001:
+                # Play chord
+                freqs = [f for f in [m_freq, b_freq] if f > 0]
+                if freqs:
+                    player._play_chord(freqs, play_duration)
+
+                # Wait with real-time sync
+                target_time = start_time + next_event_time
+                while time.time() < target_time:
+                    if keyboard:
+                        key = keyboard.check_key()
+                        if key and key.lower() == 'q':
+                            os.system('pkill -9 afplay 2>/dev/null')
+                            return False
+                    remaining = target_time - time.time()
+                    if remaining > 0:
+                        time.sleep(min(0.01, remaining))
+
+            # Advance indices
+            if abs(next_event_time - m_end_time) < 0.001:
+                melody_idx += 1
+                melody_time = m_end_time
+            if abs(next_event_time - b_end_time) < 0.001:
+                bass_idx += 1
+                bass_time = b_end_time
+
         return True
+
+    finally:
+        if keyboard:
+            keyboard.stop()
+        player._cleanup()
 
 
 def play_bridge(tempo=120, check_keys=True):
@@ -426,6 +652,7 @@ if __name__ == '__main__':
     parser.add_argument('--tempo', type=int, default=120, help='BPM (default: 120)')
     parser.add_argument('--full', action='store_true', help='Play full theme with bridge')
     parser.add_argument('--bridge', action='store_true', help='Play bridge section only')
+    parser.add_argument('--bass', action='store_true', help='Play with bass line (2 tracks)')
     parser.add_argument('--loop', action='store_true', help='Loop until stopped')
     args = parser.parse_args()
 
@@ -434,24 +661,19 @@ if __name__ == '__main__':
             print("Playing bridge section...")
             completed = play_bridge(tempo=args.tempo)
         elif args.loop:
-            print(f"Playing on loop at {args.tempo} BPM... (press 'q' to stop)")
-            keyboard = KeyboardInput()
-            keyboard.start()
-            player = BeepPlayer(tempo=args.tempo)
-            melody = TETRIS_THEME if args.full else TETRIS_SIMPLE
-            try:
-                while True:
-                    completed = player.play_once_with_keys(melody, keyboard)
-                    if not completed:
-                        break
-            finally:
-                keyboard.stop()
-                player._cleanup()
+            mode = "full theme" if args.full else "main melody"
+            bass_mode = " + bass" if args.bass else ""
+            print(f"Playing {mode}{bass_mode} on loop at {args.tempo} BPM... (press 'q' to stop)")
+            while True:
+                completed = play_once(tempo=args.tempo, full=args.full, with_bass=args.bass)
+                if not completed:
+                    break
             completed = False
         else:
             mode = "full theme" if args.full else "main melody"
-            print(f"Playing {mode} at {args.tempo} BPM...")
-            completed = play_once(tempo=args.tempo, full=args.full)
+            bass_mode = " + bass" if args.bass else ""
+            print(f"Playing {mode}{bass_mode} at {args.tempo} BPM...")
+            completed = play_once(tempo=args.tempo, full=args.full, with_bass=args.bass)
 
         if completed:
             print("\nDone!")
