@@ -29,7 +29,14 @@ python3 tetris.py
 ## 요구 사항
 
 - Python 3.x
-- macOS (BGM 재생에 `afplay` 사용)
+
+### 플랫폼별 BGM 재생
+
+| 플랫폼 | 재생 방식 | 비고 |
+|--------|----------|------|
+| macOS | `afplay` | 기본 설치됨 |
+| Windows | `winsound` | Python 내장 모듈 |
+| Linux | `aplay` / `paplay` | ALSA 또는 PulseAudio 필요 |
 
 ## 프로젝트 구조
 
@@ -64,6 +71,12 @@ python3 music/tetris_bgm.py --visual --bass
 ```
 
 `q` 키로 재생 중지.
+
+### Windows 참고사항
+
+- `winsound` 모듈 사용 (Python 기본 내장)
+- WAV 파일 생성 후 재생
+- 임시 파일 위치: `%TEMP%\tetris_*.wav`
 
 ## Credits
 
