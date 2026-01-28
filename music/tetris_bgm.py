@@ -188,6 +188,94 @@ def _generate_chord_wav(freqs, duration_sec, sample_rate=22050, volume=0.7):
     return wav
 
 
+def _generate_full_track_wav(melody, bass, tempo, sample_rate=22050, volume=0.7):
+    """Generate complete track with melody and bass pre-mixed into single WAV
+
+    This avoids note-by-note playback gaps by rendering everything upfront.
+    """
+    beat_to_sec = lambda beats: (60.0 / tempo) * beats
+
+    # Calculate total duration
+    melody_duration = sum(beat_to_sec(d) for _, d in melody)
+    total_samples = int(sample_rate * melody_duration)
+
+    # Extend bass to match melody length
+    if bass:
+        bass_duration = sum(beat_to_sec(d) for _, d in bass)
+        bass = bass * (int(melody_duration / bass_duration) + 1)
+
+    # Pre-allocate sample buffer
+    samples = [0.0] * total_samples
+
+    # Render melody track
+    melody_amp = 12000 * volume
+    current_sample = 0
+    for note, duration in melody:
+        freq = NOTES.get(note, 0)
+        dur_sec = beat_to_sec(duration)
+        n_samples = int(sample_rate * dur_sec)
+
+        if freq > 0:
+            for i in range(n_samples):
+                if current_sample + i >= total_samples:
+                    break
+                t = i / sample_rate
+                # Envelope: attack/release
+                env = 1.0
+                attack = min(int(sample_rate * 0.01), n_samples // 4)
+                release = min(int(sample_rate * 0.02), n_samples // 4)
+                if i < attack:
+                    env = i / attack
+                elif i > n_samples - release:
+                    env = (n_samples - i) / release
+                samples[current_sample + i] += melody_amp * env * math.sin(2 * math.pi * freq * t)
+
+        current_sample += n_samples
+
+    # Render bass track
+    if bass:
+        bass_amp = 10000 * volume
+        current_sample = 0
+        for note, duration in bass:
+            if current_sample >= total_samples:
+                break
+            freq = NOTES.get(note, 0)
+            dur_sec = beat_to_sec(duration)
+            n_samples = int(sample_rate * dur_sec)
+
+            if freq > 0:
+                for i in range(n_samples):
+                    if current_sample + i >= total_samples:
+                        break
+                    t = i / sample_rate
+                    env = 1.0
+                    attack = min(int(sample_rate * 0.005), n_samples // 4)
+                    release = min(int(sample_rate * 0.01), n_samples // 4)
+                    if i < attack:
+                        env = i / attack
+                    elif i > n_samples - release:
+                        env = (n_samples - i) / release
+                    samples[current_sample + i] += bass_amp * env * math.sin(2 * math.pi * freq * t)
+
+            current_sample += n_samples
+
+    # Convert to bytes
+    data = b''.join(
+        struct.pack('<h', max(-32768, min(32767, int(s))))
+        for s in samples
+    )
+
+    # Build WAV
+    wav = b'RIFF'
+    wav += struct.pack('<I', 36 + len(data))
+    wav += b'WAVEfmt '
+    wav += struct.pack('<IHHIIHH', 16, 1, 1, sample_rate, sample_rate * 2, 2, 16)
+    wav += b'data'
+    wav += struct.pack('<I', len(data))
+    wav += data
+    return wav, melody_duration
+
+
 class KeyboardInput:
     """Non-blocking keyboard input handler"""
 
@@ -509,7 +597,7 @@ def play_once(tempo=120, full=False, check_keys=True, with_bass=False):
     melody = TETRIS_THEME if full else TETRIS_SIMPLE
 
     if not with_bass:
-        # Single track playback
+        # Single track: note-by-note playback
         if check_keys:
             keyboard = KeyboardInput()
             keyboard.start()
@@ -532,11 +620,14 @@ def play_once(tempo=120, full=False, check_keys=True, with_bass=False):
             player._cleanup()
             return True
 
-    # 2-track playback (melody + bass)
-    # Extend bass to match melody length
-    melody_len = sum(d for _, d in melody)
-    bass_len = sum(d for _, d in BASS_LINE)
-    bass = BASS_LINE * (int(melody_len / bass_len) + 1)
+    # 2-track playback: pre-render entire track as single WAV
+    print("Generating audio...", end=" ", flush=True)
+    wav_data, duration = _generate_full_track_wav(melody, BASS_LINE, tempo)
+    print("Done!")
+
+    temp_file = '/tmp/tetris_full_track.wav'
+    with open(temp_file, 'wb') as f:
+        f.write(wav_data)
 
     keyboard = None
     if check_keys:
@@ -544,70 +635,40 @@ def play_once(tempo=120, full=False, check_keys=True, with_bass=False):
         keyboard.start()
 
     try:
-        start_time = time.time()
-        melody_idx = 0
-        bass_idx = 0
-        melody_time = 0
-        bass_time = 0
+        # Play the pre-rendered track
+        if sys.platform == 'darwin':
+            os.system(f'afplay "{temp_file}" 2>/dev/null &')
+        elif sys.platform == 'win32':
+            import winsound
+            threading.Thread(
+                target=lambda: winsound.PlaySound(temp_file, winsound.SND_FILENAME),
+                daemon=True
+            ).start()
+        else:
+            os.system(f'aplay "{temp_file}" 2>/dev/null &')
 
-        while melody_idx < len(melody):
+        # Wait with key checking
+        start_time = time.time()
+        while time.time() - start_time < duration:
             if keyboard:
                 key = keyboard.check_key()
                 if key and key.lower() == 'q':
                     os.system('pkill -9 afplay 2>/dev/null')
                     return False
-
-            # Get current melody note
-            m_note, m_dur = melody[melody_idx]
-            m_freq = NOTES.get(m_note, 0)
-            m_dur_sec = player._beat_to_sec(m_dur)
-            m_end_time = melody_time + m_dur_sec
-
-            # Get current bass note
-            if bass_idx < len(bass):
-                b_note, b_dur = bass[bass_idx]
-                b_freq = NOTES.get(b_note, 0)
-                b_dur_sec = player._beat_to_sec(b_dur)
-                b_end_time = bass_time + b_dur_sec
-            else:
-                b_freq = 0
-                b_end_time = float('inf')
-
-            # Determine duration until next event
-            next_event_time = min(m_end_time, b_end_time)
-            play_duration = next_event_time - max(melody_time, bass_time)
-
-            if play_duration > 0.001:
-                # Play chord
-                freqs = [f for f in [m_freq, b_freq] if f > 0]
-                if freqs:
-                    player._play_chord(freqs, play_duration)
-
-                # Wait with real-time sync
-                target_time = start_time + next_event_time
-                while time.time() < target_time:
-                    if keyboard:
-                        key = keyboard.check_key()
-                        if key and key.lower() == 'q':
-                            os.system('pkill -9 afplay 2>/dev/null')
-                            return False
-                    remaining = target_time - time.time()
-                    if remaining > 0:
-                        time.sleep(min(0.01, remaining))
-
-            # Advance indices
-            if abs(next_event_time - m_end_time) < 0.001:
-                melody_idx += 1
-                melody_time = m_end_time
-            if abs(next_event_time - b_end_time) < 0.001:
-                bass_idx += 1
-                bass_time = b_end_time
+            time.sleep(0.05)
 
         return True
 
     finally:
         if keyboard:
             keyboard.stop()
+        # Clean up
+        time.sleep(0.1)  # Let audio finish
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except OSError:
+                pass
         player._cleanup()
 
 
