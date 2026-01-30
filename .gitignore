@@ -1,3 +1,5 @@
 .idea
 __pycache__
 music/__init__.py
+video/node_modules/
+video/out/
