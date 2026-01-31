@@ -6,6 +6,8 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/press-start-2p": "^5.2.7",
     "@remotion/cli": "4.0.414",
     "@remotion/zod-types": "4.0.414",
     "react": "19.2.3",
